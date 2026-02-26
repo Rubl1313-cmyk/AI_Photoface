@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=TG_BOT_TOKEN)
 dp = Dispatcher()
 face_swapper = None
-user_ dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
+user_data: dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
 
 # ============================================================================
 # 🔥 ПРОМПТЫ
