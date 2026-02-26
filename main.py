@@ -3,7 +3,8 @@
 🎨 AI PhotoStudio — Telegram бот для Render.com
 ✅ Polling режим (работает на Render без проблем с DNS)
 ✅ Полный UI с кнопками, меню, стилями
-✅ user_data: dict = {} (правильный синтаксис!)
+✅ user_ dict = {} (правильный синтаксис!)
+✅ ИСПРАВЛЕНО: отправляет full_prompt в Cloudflare (не только пользовательский)
 """
 
 import asyncio, logging, os, signal, sys, time
@@ -46,10 +47,10 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=TG_BOT_TOKEN)
 dp = Dispatcher()
 face_swapper = None
-user_data: dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
+user_ dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
 
 # ============================================================================
-# 🔥 ПРОМПТЫ
+# 🔥 ПРОМПТЫ — ИСПРАВЛЕНО: более строгий BASE_FACE_PROMPT
 # ============================================================================
 
 STYLE_PROMPTS = {
@@ -61,11 +62,12 @@ STYLE_PROMPTS = {
     "style_fantasy": "fantasy art, magical, ethereal lighting",
 }
 
-# 🔥 Без "looking at camera" — пользователь контролирует взгляд
+# 🔥 УСИЛЕННЫЙ: без "looking at camera", с жёсткими ограничениями
 BASE_FACE_PROMPT = (
     "portrait of a person, clear face, professional photo, "
     "sharp focus, face centered, high quality, detailed face, "
-    "no hands in frame, no body parts visible"
+    "no hands in frame, no body parts visible, face only, "
+    "headshot, upper body only, clean background, studio lighting"
 )
 
 # ============================================================================
@@ -179,7 +181,7 @@ async def retry_gen(cb: types.CallbackQuery, state: FSMContext):
     asyncio.create_task(_generate(cb.message, uid, data['prompt'], data.get('style', 'style_realistic')))
 
 # ============================================================================
-# 🎨 ГЕНЕРАЦИЯ
+# 🎨 ГЕНЕРАЦИЯ — ИСПРАВЛЕНО: отправляем full_prompt в Cloudflare
 # ============================================================================
 
 async def _generate(msg: types.Message, uid: int, prompt: str, style: str):
@@ -190,23 +192,34 @@ async def _generate(msg: types.Message, uid: int, prompt: str, style: str):
             return
         face = user_data[uid]['face']
         
+        # 🔤 Перевод пользовательского промпта на английский
         tr = GoogleTranslator(source='auto', target='en')
         en = await asyncio.get_event_loop().run_in_executor(None, tr.translate, prompt)
         
-        full = f"{BASE_FACE_PROMPT}, {en}, {STYLE_PROMPTS.get(style,'')}".strip()
-        logger.info(f"🎨 Промпт: {full[:120]}...")
+        # 🔥 ФОРМИРУЕМ ПОЛНЫЙ ПРОМПТ: BASE + пользовательский + стиль
+        style_text = STYLE_PROMPTS.get(style, "")
+        full_prompt = f"{BASE_FACE_PROMPT}, {en}, {style_text}".strip()
+        logger.info(f"🎨 Промпт: {full_prompt[:150]}...")
         
+        # 🎨 Шаг 1: Генерация — ✅ ОТПРАВЛЯЕМ full_prompt (НЕ en!)
         await msg.edit_text("🎨 1/3: Генерация...", parse_mode="Markdown")
-        gen = await generate_with_cloudflare(prompt=en, width=1024, height=1024, steps=4)
+        gen = await generate_with_cloudflare(
+            prompt=full_prompt,  # ✅ ИСПРАВЛЕНО: было prompt=en
+            width=1024,
+            height=1024,
+            steps=4
+        )
         if len(gen) < 1000:
-            raise RuntimeError("Пустой ответ")
+            raise RuntimeError("Пустой ответ от генератора")
         
+        # 👤 Шаг 2: Замена лица
         await msg.edit_text("👤 2/3: Замена лица...", parse_mode="Markdown")
         result, err = face_swapper.swap(face, gen)
         if err:
             logger.warning(f"⚠️ {err}")
             result = gen
         
+        # ✅ Шаг 3: Отправка результата
         await msg.edit_text("✅ 3/3: Готово!", parse_mode="Markdown")
         sn = style.replace("style_","") if style else "без стиля"
         await msg.answer_photo(
@@ -264,7 +277,7 @@ async def main():
     
     face_swapper = FaceFusionClient(api_url=FACEFUSION_URL)
     
-    # 🔥 Настройка команд бота (на Render работает!)
+    # 🔥 Настройка команд бота
     try:
         await bot.set_my_commands([
             BotCommand(command="start", description="🚀 Начать"),
