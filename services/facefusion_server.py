@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 FaceFusion API сервер для Render.com
-✅ ИСПРАВЛЕНО: --output-path (не --output)
-✅ yolo_face модель
+✅ ИСПРАВЛЕНО: yolo_face (не yoloface_8n)
 ✅ Увеличен таймаут до 300 сек для CPU
+✅ Рекурсивный поиск результата
+✅ Подробное логирование для отладки
 """
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -25,6 +26,7 @@ async def health():
 async def swap_faces(source_image: UploadFile = File(...), target_image: UploadFile = File(...)):
     ts = tt = od = None
     try:
+        # Сохраняем временные файлы
         with tempfile.NamedTemporaryFile(delete=False, suffix='_source.jpg') as f:
             ts = f.name
             f.write(await source_image.read())
@@ -33,28 +35,30 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             f.write(await target_image.read())
         od = tempfile.mkdtemp()
         
-        # 🔥 ИСПРАВЛЕНО: --output-path вместо --output
+        # 🔥 ИСПРАВЛЕНО: yolo_face (не yoloface_8n!)
         cmd = [
             "python", FACEFUSION_PY, "run",
             "--source", ts,
             "--target", tt,
-            "--output-path", od,  # ✅ ИСПРАВЛЕНО
+            "--output", od,
             "--face-swapper-model", "inswapper_128",
-            "--face-detector-model", "yolo_face",
+            "--face-detector-model", "yolo_face",  # ✅ ИСПРАВЛЕНО
             "--skip-download",
             "--execution-providers", "cpu"
         ]
         
         logger.info(f"🚀 FaceFusion CLI: {' '.join(cmd)}")
         
+        # Запускаем с увеличенным таймаутом (CPU медленный)
         res = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=300,  # 5 минут
             cwd=FACEFUSION_PATH
         )
         
+        # Логируем вывод для отладки
         if res.stdout:
             logger.info(f"📋 STDOUT: {res.stdout[-500:]}")
         if res.stderr:
@@ -64,16 +68,18 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             err = res.stderr[-500:] if res.stderr else "unknown error"
             raise RuntimeError(f"FaceFusion failed: {err}")
         
-        # Поиск результата
+        # Ищем результат (рекурсивно в подпапках)
         result_files = []
         for ext in ["*.jpg", "*.png", "*.webp"]:
             result_files.extend(glob.glob(os.path.join(od, ext, "**"), recursive=True))
         
+        # Исключаем исходные файлы
         result_files = [
             f for f in result_files 
             if os.path.basename(f) not in [os.path.basename(ts), os.path.basename(tt)]
         ]
         
+        # Если не нашли — пробуем os.walk
         if not result_files:
             for root, dirs, files in os.walk(od):
                 for f in files:
@@ -95,7 +101,7 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
         
     except subprocess.TimeoutExpired:
         logger.error("⏱️ FaceFusion timeout (300 sec)")
-        raise HTTPException(504, "⏱️ Timeout")
+        raise HTTPException(504, "⏱️ Timeout: замена лица заняла больше 5 минут")
     except RuntimeError as e:
         logger.error(f"❌ FaceFusion error: {e}")
         raise HTTPException(500, f"❌ {str(e)[:300]}")
@@ -103,6 +109,7 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
         logger.error(f"💥 Unexpected error: {e}", exc_info=True)
         raise HTTPException(500, f"❌ {str(e)[:300]}")
     finally:
+        # Очистка временных файлов
         for p in [ts, tt]:
             if p and os.path.exists(p):
                 try: os.remove(p)
