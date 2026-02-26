@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""FaceFusion API сервер для Render — ИСПРАВЛЕННЫЙ CLI"""
+"""
+FaceFusion API сервер для Render.com
+✅ ИСПРАВЛЕНО: --source --target --output (не -s -t -o)
+✅ Увеличен таймаут до 300 сек для CPU
+✅ Рекурсивный поиск результата
+✅ Подробное логирование для отладки
+"""
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import Response
@@ -29,7 +35,7 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             f.write(await target_image.read())
         od = tempfile.mkdtemp()
         
-        # 🔥 ИСПРАВЛЕННЫЙ CLI: --source --target --output (не -s -t -o!)
+        # 🔥 ИСПРАВЛЕННЫЙ CLI: --source --target --output
         cmd = [
             "python", FACEFUSION_PY, "run",
             "--source", ts,
@@ -43,12 +49,12 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
         
         logger.info(f"🚀 FaceFusion CLI: {' '.join(cmd)}")
         
-        # Запускаем с увеличенным таймаутом
+        # Запускаем с увеличенным таймаутом (CPU медленный)
         res = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,  # 5 минут для CPU
+            timeout=300,  # 5 минут
             cwd=FACEFUSION_PATH
         )
         
@@ -62,10 +68,10 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             err = res.stderr[-500:] if res.stderr else "unknown error"
             raise RuntimeError(f"FaceFusion failed: {err}")
         
-        # Ищем результат
+        # Ищем результат (рекурсивно в подпапках)
         result_files = []
         for ext in ["*.jpg", "*.png", "*.webp"]:
-            result_files.extend(glob.glob(os.path.join(od, ext), recursive=True))
+            result_files.extend(glob.glob(os.path.join(od, ext, "**"), recursive=True))
         
         # Исключаем исходные файлы
         result_files = [
@@ -73,8 +79,8 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             if os.path.basename(f) not in [os.path.basename(ts), os.path.basename(tt)]
         ]
         
+        # Если не нашли — пробуем os.walk
         if not result_files:
-            # Попробуем найти в подпапках
             for root, dirs, files in os.walk(od):
                 for f in files:
                     if f.lower().endswith(('.jpg', '.png', '.webp')):
@@ -82,7 +88,7 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
                             result_files.append(os.path.join(root, f))
         
         if not result_files:
-            raise RuntimeError(f"No output file found. STDOUT: {res.stdout[-200:]}, STDERR: {res.stderr[-200:]}")
+            raise RuntimeError(f"No output file. STDOUT: {res.stdout[-200:]}, STDERR: {res.stderr[-200:]}")
         
         result_path = result_files[0]
         logger.info(f"✅ Found result: {result_path}")
@@ -103,7 +109,7 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
         logger.error(f"💥 Unexpected error: {e}", exc_info=True)
         raise HTTPException(500, f"❌ {str(e)[:300]}")
     finally:
-        # Очистка
+        # Очистка временных файлов
         for p in [ts, tt]:
             if p and os.path.exists(p):
                 try: os.remove(p)
