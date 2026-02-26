@@ -8,6 +8,7 @@ CF_API_KEY = os.getenv("CF_API_KEY", "").strip()
 BOT_NAME = os.getenv("BOT_NAME", "🎨 AI PhotoStudio")
 DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "50"))
 FACEFUSION_URL = os.getenv("FACEFUSION_URL", "http://localhost:8081")
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")  # ✅ Добавь эту строку
 
 def check_config():
     if not TG_BOT_TOKEN or len(TG_BOT_TOKEN) < 40: print("❌ TG_BOT_TOKEN"); return False
