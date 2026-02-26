@@ -324,7 +324,7 @@ async def on_startup(bot: Bot):
     asyncio.create_task(send_startup_notification())
 
 async def on_shutdown(bot: Bot):
-    await bot.delete_webhook()
+    # await bot.delete_webhook()
     logger.info("Webhook removed")
 
 def main():
