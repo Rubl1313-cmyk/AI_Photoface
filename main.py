@@ -89,17 +89,30 @@ async def start_gen(m: types.Message, state: FSMContext):
     user_data[uid] = {'face': None}
     await m.answer("📸 Отправь фото лица", reply_markup=ReplyKeyboardRemove())
 
-@dp.message(UserStates.waiting_for_face, F.photo)
+@dp.message(UserStates.waiting_for_face, F.photo | F.document)
 async def got_photo(m: types.Message, state: FSMContext):
     uid = m.from_user.id
     try:
-        f = m.photo[-1]
-        data = (await bot.download(f)).read()
+        # 🔥 Получаем файл: если есть photo — берём лучшее, иначе document
+        file = m.photo[-1] if m.photo else m.document
+        
+        # Проверка что это изображение
+        if file and hasattr(file, 'mime_type') and not file.mime_type.startswith('image/'):
+            await m.answer("❌ Это не изображение", parse_mode="Markdown"); return
+        
+        # Скачиваем
+        data = (await bot.download(file)).read()
+        
+        if len(data) > 10_000_000:
+            await m.answer("❌ Фото слишком большое (>10MB)", parse_mode="Markdown"); return
+        
         user_data[uid]['face'] = data
         await state.set_state(UserStates.waiting_for_prompt)
-        await m.answer("📝 Описание:", reply_markup=ReplyKeyboardRemove())
+        await m.answer("📝 Описание (пиши на русском!):\n💡 `мужчина в костюме, офис`", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+        
     except Exception as e:
-        logger.error(f"Photo: {e}"); await m.answer("❌ Ошибка")
+        logger.error(f"💥 Photo error: {e}")
+        await m.answer("❌ Ошибка обработки фото. Попробуй ещё раз", parse_mode="Markdown")
 
 @dp.message(UserStates.waiting_for_prompt, F.text)
 async def got_prompt(m: types.Message, state: FSMContext):
