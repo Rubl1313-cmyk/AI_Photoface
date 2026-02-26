@@ -1,7 +1,7 @@
 services:
   - type: web
     name: ai-photo-studio
-    env: docker
+    env: python
     plan: free
     region: oregon
     buildCommand: ""
