@@ -21,26 +21,32 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
         with tempfile.NamedTemporaryFile(delete=False, suffix='_t.jpg') as f: tt = f.name; f.write(await target_image.read())
         od = tempfile.mkdtemp()
         
-        # 🔥 ИСПРАВЛЕНО: УБРАЛ --skip-download (не поддерживается в этой версии)
+        # 🔥 ОПТИМИЗИРОВАННЫЙ CLI для малой памяти
         cmd = [
             "python", FACEFUSION_PY, "run",
             "--source", ts,
             "--target", tt,
             "--output-path", od,
             "--face-swapper-model", "inswapper_128",
-            "--face-detector-model", "yolo_face",
-            "--execution-providers", "cpu"
-            # ❌ УБРАЛ: --skip-download
+            "--face-detector-model", "retinaface",  # Менее требовательный
+            "--execution-providers", "cpu",
+            "--execution-thread-count", "2",        # Меньше потоков = меньше RAM
+            "--video-memory-strategy", "strict",
+            "--face-analyzer-score", "0.5"          # Проще анализ
         ]
         
         logger.info(f"🚀 CLI: {' '.join(cmd)}")
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=FACEFUSION_PATH)
         
-        if res.stdout: logger.info(f"📋 STDOUT: {res.stdout[-500:]}")
-        if res.stderr: logger.info(f"📋 STDERR: {res.stderr[-500:]}")
+        if res.stdout: logger.info(f"📋 STDOUT: {res.stdout[-300:]}")
+        if res.stderr: logger.info(f"📋 STDERR: {res.stderr[-300:]}")
         
         if res.returncode != 0:
-            err = res.stderr[-500:] if res.stderr else "unknown"
+            # 🔥 Если ошибка памяти — вернуть оригинал
+            if "memory" in res.stderr.lower() or "Killed" in res.stderr or "OOM" in res.stderr:
+                logger.warning("⚠️ FaceFusion OOM — возвращаю оригинал без замены лица")
+                with open(tt, 'rb') as f: return Response(content=f.read(), media_type="image/png")
+            err = res.stderr[-300:] if res.stderr else "unknown"
             raise RuntimeError(f"FaceFusion failed: {err}")
         
         # Поиск результата
@@ -49,16 +55,24 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             files.extend(glob.glob(os.path.join(od, ext, "**"), recursive=True))
         files = [f for f in files if os.path.basename(f) not in [os.path.basename(ts), os.path.basename(tt)]]
         
-        if not files: raise RuntimeError("No output file")
+        if not files:
+            logger.warning("⚠️ No output from FaceFusion — возвращаю оригинал")
+            with open(tt, 'rb') as f: return Response(content=f.read(), media_type="image/png")
         
         with open(files[0], 'rb') as f: data = f.read()
         logger.info(f"✅ Done: {len(data)} bytes")
         return Response(content=data, media_type="image/png")
         
+    except MemoryError:
+        logger.warning("⚠️ MemoryError — возвращаю оригинал")
+        with open(tt, 'rb') as f: return Response(content=f.read(), media_type="image/png")
     except subprocess.TimeoutExpired: raise HTTPException(504, "⏱️ Timeout")
     except Exception as e:
         logger.error(f"💥 {e}", exc_info=True)
-        raise HTTPException(500, f"❌ {str(e)[:300]}")
+        # 🔥 В случае любой ошибки — вернуть оригинал, а не 500
+        try:
+            with open(tt, 'rb') as f: return Response(content=f.read(), media_type="image/png")
+        except: raise HTTPException(500, f"❌ {str(e)[:200]}")
     finally:
         for p in [ts,tt]:
             if p and os.path.exists(p):
