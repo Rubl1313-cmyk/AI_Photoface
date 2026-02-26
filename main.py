@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""🎨 AI PhotoStudio — Render.com (Polling + Health server)"""
+"""🎨 AI PhotoStudio — Render.com (Webhook, minimal working)"""
 
 import asyncio, logging, os, signal, sys
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.exceptions import TelegramAPIError, TelegramNetworkError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from deep_translator import GoogleTranslator
 from dotenv import load_dotenv
 
 load_dotenv()
-from config import TG_BOT_TOKEN, CF_WORKER_URL, CF_API_KEY, BOT_NAME, DAILY_LIMIT, FACEFUSION_URL, check_config
+from config import TG_BOT_TOKEN, CF_WORKER_URL, CF_API_KEY, BOT_NAME, DAILY_LIMIT, FACEFUSION_URL, WEBHOOK_PATH, check_config
 from states import UserStates
-from keyboards import get_main_menu, get_style_menu, get_result_keyboard
+from keyboards import get_main_menu, get_style_menu
 from services.cloudflare import generate_with_cloudflare
 from services.face_fusion_api import FaceFusionClient
 from services.usage import tracker
@@ -23,11 +23,11 @@ from services.usage import tracker
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s', handlers=[logging.StreamHandler(sys.stdout)], force=True)
 logger = logging.getLogger(__name__)
 
-# ✅ ГЛОБАЛЬНЫЕ — ПРАВИЛЬНЫЙ СИНТАКСИС
+# ✅ ГЛОБАЛЬНЫЕ
 bot = Bot(token=TG_BOT_TOKEN)
 dp = Dispatcher()
 face_swapper = None
-user_data: dict = {}  
+user_ dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
 
 # 🔥 ПРОМПТЫ
 STYLE_PROMPTS = {"style_cinematic": "cinematic lighting, dramatic", "style_portrait": "professional portrait, studio lighting", "style_art": "digital art, illustration", "style_realistic": "photorealistic, natural lighting", "style_cyberpunk": "neon lights, cyberpunk", "style_fantasy": "fantasy art, magical"}
@@ -98,31 +98,48 @@ async def _generate(msg: types.Message, uid: int, prompt: str, style: str):
         except: await msg.answer(f"❌ {str(e)[:100]}")
         user_data.pop(uid, None)
 
-# 🌐 HEALTH SERVER ДЛЯ RENDER (порт 8080)
-async def run_health_server():
+# 🌐 WEBHOOK + HEALTH SERVER
+async def run_webhook():
+    logger.info("🚀 Webhook...")
+    app = web.Application()
+    
+    # Health endpoint для Render (порт 8080)
     async def health_handler(request): return web.json_response({"status": "ok"})
-    app = web.Application(); app.router.add_get("/health", health_handler)
+    app.router.add_get("/health", health_handler)
+    logger.info("✅ /health")
+    
+    # Telegram webhook handler
+    wp = os.getenv("WEBHOOK_PATH", "/webhook")
+    logger.info(f"🔗 Webhook: {wp}")
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=wp)
+    logger.info("✅ Webhook handler")
+    
+    # setup_application — ОБЯЗАТЕЛЬНО
+    setup_application(app, dp, bot=bot)
+    logger.info("✅ setup_application")
+    
+    # Запуск сервера на порту 8080 (требование Render)
     runner = web.AppRunner(app); await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080); await site.start()
-    logger.info("🌐 Health server: 0.0.0.0:8080")
+    logger.info("🌐 Server: 0.0.0.0:8080")
+    logger.info("✅ Bot ready!")
+    
     while True: await asyncio.sleep(3600)
 
-# 🚀 POLLING
-async def run_polling():
-    logger.info("🚀 Polling...")
-    while True:
-        try: await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-        except (TelegramNetworkError, TelegramAPIError) as e: logger.warning(f"⚠️ {e}"); await asyncio.sleep(30)
-        except Exception as e: logger.error(f"💥 {e}"); await asyncio.sleep(30)
-
-# 🎯 MAIN
 async def main():
     global face_swapper
     if not check_config(): sys.exit(1)
     face_swapper = FaceFusionClient(api_url=FACEFUSION_URL)
-    logger.info(f"🚀 {BOT_NAME} | Polling + Health (Render)")
-    # Запускаем health server и polling параллельно
-    await asyncio.gather(run_health_server(), run_polling())
+    
+    # 🔥 УДАЛЯЕМ WEBHOOK при старте (чистый старт)
+    try:
+        await bot.delete_webhook()
+        logger.info("✅ Webhook deleted")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not delete webhook: {e}")
+    
+    logger.info(f"🚀 {BOT_NAME} | Webhook (Render)")
+    await run_webhook()
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda s,f: sys.exit(0))
