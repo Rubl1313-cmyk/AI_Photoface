@@ -1,64 +1,52 @@
-import httpx
-import logging
+import httpx, logging
 from config import CF_WORKER_URL, CF_API_KEY
-
 logger = logging.getLogger(__name__)
 
-# 🔥 Хэши известных "test/placeholder" изображений (если Cloudflare возвращает заглушку)
-TEST_IMAGE_HASHES = [
-    "d41d8cd98f00b204e9800998ecf8427e",  # пустой файл
-    # Добавь хэши если узнаешь что Cloudflare возвращает конкретную заглушку
-]
-
-def _is_test_image(data: bytes) -> bool:
-    """Проверяет не является ли изображение тестовой заглушкой"""
-    if len(data) < 1000:  # Слишком маленькое
-        return True
-    # Можно добавить проверку по хэшу если нужно:
-    # import hashlib
-    # h = hashlib.md5(data).hexdigest()
-    # return h in TEST_IMAGE_HASHES
-    return False
-
-async def generate_with_cloudflare(
-    prompt: str,
-    width: int = 1024,
-    height: int = 1024,
-    steps: int = 4
-) -> bytes:
-    """Генерация через Cloudflare Worker с проверкой на заглушку"""
+async def generate_with_cloudflare(prompt: str, width: int = 1024, height: int = 1024, steps: int = 4) -> bytes:
+    logger.info(f"📡 Cloudflare request:")
+    logger.info(f"   URL: {CF_WORKER_URL}")
+    logger.info(f"   Prompt: {prompt[:100]}...")
+    logger.info(f"   Size: {width}x{height}")
     
-    # 🔥 Усиливаем промпт если он слишком короткий
-    if len(prompt.split()) < 5:
-        prompt = f"detailed portrait, {prompt}, professional photography"
-        logger.info(f"🔧 Усилен короткий промпт: {prompt}")
-    
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        data = {
-            "prompt": prompt,
-            "width": str(width),
-            "height": str(height),
-            "steps": str(steps),
-        }
-        logger.info(f"📡 Cloudflare request: prompt='{prompt[:100]}...', size={width}x{height}")
-        
-        response = await client.post(
-            CF_WORKER_URL.strip(),
-            headers={"Authorization": f"Bearer {CF_API_KEY}"},
-            data=data,
-            timeout=90
-        )
-        response.raise_for_status()
-        
-        content = response.content
-        
-        # 🔥 Проверка на заглушку
-        if _is_test_image(content):
-            logger.warning(f"⚠️ Cloudflare вернул подозрительное изображение ({len(content)} bytes)")
-            # Не выбрасываем ошибку — пусть бот отправит что есть, но с предупреждением в логе
-        
-        if len(content) < 1000:
-            raise ValueError(f"Пустой ответ от генератора ({len(content)} bytes)")
-        
-        logger.info(f"✅ Cloudflare: {len(content)} bytes")
-        return content
+    async with httpx.AsyncClient(timeout=90) as client:
+        try:
+            r = await client.post(
+                CF_WORKER_URL.strip(),
+                headers={"Authorization": f"Bearer {CF_API_KEY}"},
+                data={"prompt": prompt, "width": str(width), "height": str(height), "steps": str(steps)},
+                timeout=90
+            )
+            
+            logger.info(f"📥 Cloudflare response:")
+            logger.info(f"   Status: {r.status_code}")
+            logger.info(f"   Size: {len(r.content)} bytes")
+            logger.info(f"   Content-Type: {r.headers.get('content-type', 'unknown')}")
+            
+            # 🔥 Проверка на тестовое изображение
+            if len(r.content) < 5000:
+                logger.warning(f"⚠️ Слишком маленький ответ ({len(r.content)} bytes) - возможно тестовая заглушка!")
+            
+            # Проверка что это действительно изображение
+            if not r.content.startswith(b'\xff\xd8') and not r.content.startswith(b'\x89PNG'):
+                logger.error(f"❌ Ответ не является изображением!")
+                logger.error(f"   Первые байты: {r.content[:50]}")
+                raise ValueError(f"Cloudflare вернул не изображение (статус {r.status_code})")
+            
+            if r.status_code != 200:
+                raise ValueError(f"HTTP {r.status_code}: {r.text[:200]}")
+            
+            if len(r.content) < 1000:
+                raise ValueError(f"Пустой ответ ({len(r.content)} bytes)")
+            
+            logger.info(f"✅ Cloudflare: {len(r.content)} bytes - OK")
+            return r.content
+            
+        except httpx.ConnectError as e:
+            logger.error(f"❌ Не удалось подключиться к Cloudflare: {e}")
+            raise ValueError("Cloudflare Worker недоступен")
+        except httpx.TimeoutException as e:
+            logger.error(f"⏱️ Timeout при запросе к Cloudflare: {e}")
+            raise ValueError("Cloudflare не ответил за 90 секунд")
+        except Exception as e:
+            logger.error(f"❌ Ошибка Cloudflare: {e}")
+            raise
