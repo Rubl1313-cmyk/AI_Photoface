@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 FaceFusion API сервер для Render.com
-✅ ИСПРАВЛЕНО: --source --target --output (не -s -t -o)
+✅ ИСПРАВЛЕНО: yolo_face (не yoloface_8n)
 ✅ Увеличен таймаут до 300 сек для CPU
 ✅ Рекурсивный поиск результата
 ✅ Подробное логирование для отладки
@@ -35,14 +35,14 @@ async def swap_faces(source_image: UploadFile = File(...), target_image: UploadF
             f.write(await target_image.read())
         od = tempfile.mkdtemp()
         
-        # 🔥 ИСПРАВЛЕННЫЙ CLI: --source --target --output
+        # 🔥 ИСПРАВЛЕНО: yolo_face (не yoloface_8n!)
         cmd = [
             "python", FACEFUSION_PY, "run",
             "--source", ts,
             "--target", tt,
             "--output", od,
             "--face-swapper-model", "inswapper_128",
-            "--face-detector-model", "yoloface_8n",
+            "--face-detector-model", "yolo_face",  # ✅ ИСПРАВЛЕНО
             "--skip-download",
             "--execution-providers", "cpu"
         ]
