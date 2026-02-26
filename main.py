@@ -14,7 +14,7 @@ from aiohttp import web
 
 import config
 from states import UserStates
-from keyboards import get_main_menu, get_style_keyboard
+from keyboards import get_main_menu, get_style_keyboard, get_confirm_keyboard
 from services.cloudflare import generate_with_cloudflare
 from services.face_fusion_api import FaceFusionClient
 from services.usage import UsageTracker
