@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""🎨 AI PhotoStudio — Render.com (Webhook, minimal working)"""
+"""🎨 AI PhotoStudio — Render.com (Webhook, working)"""
 
 import asyncio, logging, os, signal, sys
 from aiogram import Bot, Dispatcher, F, types
@@ -27,13 +27,40 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=TG_BOT_TOKEN)
 dp = Dispatcher()
 face_swapper = None
-user_data: dict = {}  # ✅ ПРАВИЛЬНО: user_ dict = {}
+user_data: dict = {}  
 
-# 🔥 ПРОМПТЫ
-STYLE_PROMPTS = {"style_cinematic": "cinematic lighting, dramatic", "style_portrait": "professional portrait, studio lighting", "style_art": "digital art, illustration", "style_realistic": "photorealistic, natural lighting", "style_cyberpunk": "neon lights, cyberpunk", "style_fantasy": "fantasy art, magical"}
-BASE_FACE_PROMPT = "portrait of a person, clear face, professional photo, sharp focus, face centered, high quality, detailed face, no hands in frame"
+# 🔥 ПРОМПТЫ — ИСПРАВЛЕНО: пользовательский промпт ГЛАВНЫЙ
+STYLE_PROMPTS = {
+    "style_cinematic": "cinematic lighting, dramatic, film grain, movie scene",
+    "style_portrait": "professional portrait, studio lighting",
+    "style_art": "digital art, illustration, artistic",
+    "style_realistic": "photorealistic, natural lighting, sharp focus",
+    "style_cyberpunk": "neon lights, cyberpunk, futuristic, sci-fi",
+    "style_fantasy": "fantasy art, magical, ethereal",
+}
 
-# 🤖 ХЕНДЛЕРЫ
+# 🔥 ИСПРАВЛЕНО: МЕНЬШЕ ограничений, больше свободы для сцен
+BASE_FACE_PROMPT = "high quality, detailed, professional"
+
+# 🔥 Словарь гендеров
+GENDER_KEYWORDS = {
+    'мужчина': 'man, male, masculine',
+    'мужской': 'man, male',
+    'парень': 'young man, male',
+    'женщина': 'woman, female, feminine',
+    'женский': 'woman, female',
+    'девушка': 'young woman, female',
+}
+
+def enhance_prompt(user_prompt: str, translated: str) -> str:
+    """Добавляет гендер если указан"""
+    prompt_lower = user_prompt.lower()
+    for ru, en in GENDER_KEYWORDS.items():
+        if ru in prompt_lower:
+            return f"{en}, {translated}"
+    return translated
+
+# 🤖 ХЕНДЛЕРЫ (без изменений)
 @dp.message(CommandStart())
 async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear(); user_data.pop(m.from_user.id, None)
@@ -56,7 +83,7 @@ async def got_photo(m: types.Message, state: FSMContext):
         if len(data) > 10_000_000: await m.answer("❌ >10MB"); return
         user_data[uid]['face'] = data
         await state.set_state(UserStates.waiting_for_prompt)
-        await m.answer("📝 Описание:", reply_markup=ReplyKeyboardRemove())
+        await m.answer("📝 Описание (пиши что хочешь!):\n💡 `мужчина на коне, вестерн`", reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
     except Exception as e: logger.error(f"Photo: {e}"); await m.answer("❌ Ошибка")
 
 @dp.message(UserStates.waiting_for_prompt, F.text)
@@ -79,65 +106,74 @@ async def go_home(cb: types.CallbackQuery, state: FSMContext):
     try: await cb.message.edit_text("🏠 Меню", reply_markup=get_main_menu())
     except: await cb.message.answer("🏠 Меню", reply_markup=get_main_menu())
 
-# 🎨 ГЕНЕРАЦИЯ
+# 🎨 ГЕНЕРАЦИЯ — ИСПРАВЛЕНО: ПОЛЬЗОВАТЕЛЬСКИЙ ПРОМПТ ГЛАВНЫЙ
 async def _generate(msg: types.Message, uid: int, prompt: str, style: str):
     try:
         face = user_data[uid]['face']
+        
+        # 🔤 Перевод
         tr = GoogleTranslator(source='auto', target='en')
         en = await asyncio.get_event_loop().run_in_executor(None, tr.translate, prompt)
-        full = f"{BASE_FACE_PROMPT}, {en}, {STYLE_PROMPTS.get(style,'')}"
-        await msg.edit_text("🎨 1/3..."); gen = await generate_with_cloudflare(prompt=full, width=1024, height=1024, steps=4)
-        await msg.edit_text("👤 2/3..."); result, err = face_swapper.swap(face, gen)
+        
+        # 🔥 Добавляем гендер если указан
+        en_with_gender = enhance_prompt(prompt, en)
+        
+        # 🔥 ФОРМИРУЕМ ПРОМПТ: пользовательский ГЛАВНЫЙ, BASE минимальный
+        style_text = STYLE_PROMPTS.get(style, "")
+        
+        # ✅ ИСПРАВЛЕНО: порядок ВАЖЕН — пользовательский промпт ПЕРВЫЙ
+        full_prompt = f"{en_with_gender}, {style_text}, {BASE_FACE_PROMPT}".strip()
+        
+        logger.info(f"🔤 Перевод: '{prompt}' → '{en_with_gender}'")
+        logger.info(f"🎨 Промпт: {full_prompt}")
+        
+        # 🎨 Генерация
+        await msg.edit_text("🎨 1/3...")
+        gen = await generate_with_cloudflare(prompt=full_prompt, width=1024, height=1024, steps=4)
+        
+        # 👤 Замена лица
+        await msg.edit_text("👤 2/3...")
+        result, err = face_swapper.swap(face, gen)
         if err: result = gen
+        
+        # ✅ Результат
         await msg.edit_text("✅ Готово!")
         await msg.answer_photo(photo=BufferedInputFile(result, "result.png"), caption=f"📸 `{prompt}`")
         tracker.increment(uid); user_data.pop(uid, None)
+        
     except Exception as e:
         logger.error(f"Gen: {e}")
         try: await msg.edit_text(f"❌ {str(e)[:100]}")
         except: await msg.answer(f"❌ {str(e)[:100]}")
         user_data.pop(uid, None)
 
-# 🌐 WEBHOOK + HEALTH SERVER
+# 🌐 WEBHOOK (без изменений)
 async def run_webhook():
     logger.info("🚀 Webhook...")
     app = web.Application()
-    
-    # Health endpoint для Render (порт 8080)
     async def health_handler(request): return web.json_response({"status": "ok"})
     app.router.add_get("/health", health_handler)
     logger.info("✅ /health")
-    
-    # Telegram webhook handler
     wp = os.getenv("WEBHOOK_PATH", "/webhook")
     logger.info(f"🔗 Webhook: {wp}")
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=wp)
     logger.info("✅ Webhook handler")
-    
-    # setup_application — ОБЯЗАТЕЛЬНО
     setup_application(app, dp, bot=bot)
     logger.info("✅ setup_application")
-    
-    # Запуск сервера на порту 8080 (требование Render)
     runner = web.AppRunner(app); await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080); await site.start()
     logger.info("🌐 Server: 0.0.0.0:8080")
     logger.info("✅ Bot ready!")
-    
     while True: await asyncio.sleep(3600)
 
 async def main():
     global face_swapper
     if not check_config(): sys.exit(1)
     face_swapper = FaceFusionClient(api_url=FACEFUSION_URL)
-    
-    # 🔥 УДАЛЯЕМ WEBHOOK при старте (чистый старт)
     try:
         await bot.delete_webhook()
         logger.info("✅ Webhook deleted")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not delete webhook: {e}")
-    
+    except Exception as e: logger.warning(f"⚠️ {e}")
     logger.info(f"🚀 {BOT_NAME} | Webhook (Render)")
     await run_webhook()
 
