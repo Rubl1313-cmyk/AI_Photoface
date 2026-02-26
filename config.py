@@ -12,3 +12,8 @@ FACEFUSION_URL = os.getenv("FACEFUSION_URL", "").rstrip("/")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # например https://ai-photoface.onrender.com
 WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
 PORT = int(os.getenv("PORT", "8080"))
+ADMIN_ID = os.getenv("ADMIN_ID", "")
+if ADMIN_ID:
+    ADMIN_IDS = [int(x.strip()) for x in ADMIN_ID.split(",") if x.strip()]
+else:
+    ADMIN_IDS = []
