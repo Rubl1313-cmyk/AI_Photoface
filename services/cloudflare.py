@@ -56,14 +56,14 @@ async def generate_photoshoot_with_cloudflare(
     width: int = 512,
     height: int = 512,
     strength: float = 0.8,
-    guidance: float = 7.5,
+    guidance_scale: float = 7.5,      # обратите внимание: guidance_scale, не guidance
     num_steps: int = 20,
     negative_prompt: str = ""
 ) -> Optional[bytes]:
     import os
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
 
-    # Конвертируем в PNG
+    # Конвертируем в PNG (Pillow)
     png_bytes = convert_to_png(source_image_bytes)
     image_b64 = base64.b64encode(png_bytes).decode('utf-8')
 
@@ -73,13 +73,12 @@ async def generate_photoshoot_with_cloudflare(
         "width": width,
         "height": height,
         "strength": strength,
-        "guidance": guidance,
+        "guidance_scale": guidance_scale,   # ← именно guidance_scale
         "num_steps": num_steps,
         "negative_prompt": negative_prompt
     }
     headers = {"Content-Type": "application/json"}
 
-    logger.info(f"📸 img2img: {prompt[:50]}..., size={width}x{height}, strength={strength}")
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(url, json=payload, headers=headers, timeout=120)
