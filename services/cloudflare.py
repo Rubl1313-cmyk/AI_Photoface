@@ -1,70 +1,89 @@
 import httpx
+import base64
 import logging
-from deep_translator import GoogleTranslator
-from config import CF_WORKER_URL, CF_API_KEY
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Инициализируем переводчик один раз
-_translator = GoogleTranslator(source='ru', target='en')
-
-# Бустеры для каждого стиля (повышают качество и соответствие стилю)
-REALISM_BOOSTERS = {
-    "realistic": "like a natural photo, photorealistic, highly detailed, 8k, sharp focus, professional photo, natural lighting, depth of field, intricate details, ultra high quality, shot on DSLR, f/2.8 aperture, bokeh, golden hour lighting, hyperrealistic, texture details, skin pores, hair details",
-    "anime": "anime style, cel shaded, vibrant colors, clean lines, Japanese animation style",
-    "oil": "oil painting, impasto, textured brushstrokes, classic art, gallery quality",
-    "sketch": "pencil sketch, hand-drawn, artistic, monochrome, detailed shading",
-    "cyberpunk": "cyberpunk style, neon lights, dark cityscape, futuristic, sci-fi",
-    "baroque": "baroque style, dramatic lighting, rich colors, classical art, ornate",
-    "surreal": "surrealism, dreamlike, impossible scenes, Salvador Dali style",
-    "comic": "comic book style, bold outlines, halftone dots, vibrant, sequential art",
-    "photoreal": "like a natural photo, photorealistic, ultra realistic, 4k, detailed, sharp, professional photography, shot on Sony A7R IV, 50mm lens, shallow depth of field, natural skin texture, ray tracing global illumination, physically based rendering, cinematic lighting, octane render",
-    "watercolor": "watercolor painting, soft edges, translucent colors, artistic",
-    "pastel": "pastel colors, soft, gentle, chalk drawing, artistic",
-    "3d": "3D render, octane render, cinematic lighting, highly detailed, CGI"
-}
-
-async def generate_with_cloudflare(prompt: str, style: str = "realistic", width: int = 1024, height: int = 1024, steps: int = 4) -> bytes:
+# Существующая функция для text-to-image (FLUX)
+async def generate_with_cloudflare(
+    prompt: str,
+    style: str = None,
+    width: int = 1024,
+    height: int = 1024,
+    negative_prompt: str = ""
+) -> Optional[bytes]:
     """
-    Отправляет запрос на Cloudflare Workers AI и возвращает байты изображения.
-    Предварительно переводит промпт с русского на английский и добавляет бустер для стиля.
+    Генерирует изображение по текстовому промпту через Cloudflare Workers (FLUX).
     """
-    if not CF_WORKER_URL:
-        raise ValueError("CF_WORKER_URL не задан")
-    if not CF_API_KEY:
-        raise ValueError("CF_API_KEY не задан")
-
-    # Добавляем бустер для выбранного стиля
-    booster = REALISM_BOOSTERS.get(style, "")
-    if booster:
-        enhanced_prompt = f"{prompt}, {booster}"
-    else:
-        enhanced_prompt = prompt
-
-    # Переводим промпт
-    try:
-        translated_prompt = _translator.translate(enhanced_prompt)
-        logger.info(f"🔄 Перевод: '{enhanced_prompt[:50]}...' -> '{translated_prompt[:50]}...'")
-    except Exception as e:
-        logger.warning(f"Не удалось перевести промпт: {e}. Отправляем оригинал.")
-        translated_prompt = enhanced_prompt
-
-    headers = {
-        "Authorization": f"Bearer {CF_API_KEY}",
+    import os
+    url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
+    
+    payload = {
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "steps": 4,  # можно сделать параметром, но пока фиксировано
+        "negative_prompt": negative_prompt
     }
+    
+    headers = {"Content-Type": "application/json"}
+    # Если нужен ключ: "Authorization": f"Bearer {os.getenv('CF_API_KEY')}"
+    
+    logger.info(f"📡 Отправка запроса в Cloudflare с промптом: {prompt[:50]}...")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(url, json=payload, headers=headers, timeout=60)
+            resp.raise_for_status()
+            return resp.content
+        except Exception as e:
+            logger.error(f"Ошибка при генерации: {e}")
+            return None
 
-    # Формируем form-data (Worker ожидает именно такой формат)
-    form_data = {
-        "prompt": translated_prompt,
-        "width": str(width),
-        "height": str(height),
-        "steps": str(steps)
+# НОВАЯ функция для img2img (фотосессия)
+async def generate_photoshoot_with_cloudflare(
+    prompt: str,
+    source_image_bytes: bytes,
+    width: int = 1024,
+    height: int = 1024,
+    strength: float = 0.8,
+    guidance: float = 7.5,
+    num_steps: int = 20,
+    negative_prompt: str = ""
+) -> Optional[bytes]:
+    """
+    Генерирует изображение на основе исходного фото (img2img) через Cloudflare Workers.
+    Использует модель stable-diffusion-v1-5-img2img.
+    """
+    import os
+    url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
+    
+    # Кодируем исходное изображение в base64
+    image_b64 = base64.b64encode(source_image_bytes).decode('utf-8')
+    
+    payload = {
+        "prompt": prompt,
+        "image_b64": image_b64,
+        "width": width,
+        "height": height,
+        "strength": strength,
+        "guidance": guidance,
+        "num_steps": num_steps,
+        "negative_prompt": negative_prompt,
+        # Можно явно указать модель, если нужно:
+        # "model": "@cf/runwayml/stable-diffusion-v1-5-img2img"
     }
-
-    logger.info(f"📡 Отправка запроса в Cloudflare с промптом: {translated_prompt[:50]}...")
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(CF_WORKER_URL, data=form_data, headers=headers)
-        resp.raise_for_status()
-        # Worker возвращает бинарные данные изображения
-        return resp.content
+    
+    headers = {"Content-Type": "application/json"}
+    
+    logger.info(f"📸 Запрос на фотосессию: промпт '{prompt[:50]}...', strength={strength}")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(url, json=payload, headers=headers, timeout=120)
+            resp.raise_for_status()
+            return resp.content
+        except Exception as e:
+            logger.error(f"Ошибка при генерации фотосессии: {e}")
+            return None
