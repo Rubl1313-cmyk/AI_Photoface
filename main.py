@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-🎨 AI PhotoStudio — Main Bot File (с выбором типа кадра)
+🎨 AI PhotoStudio — Main Bot File (финальная версия с фотосессией)
+- Генерация с заменой лица (портрет / полный рост)
+- Простая генерация
+- Замена лица на своём фото (без генерации)
+- ИИ фотосессия (img2img) – создание нового изображения на основе загруженного фото
 """
 
 import asyncio
@@ -18,40 +22,48 @@ from aiohttp import web
 import config
 from states import UserStates
 from keyboards import get_main_menu, get_gender_keyboard, get_style_keyboard, get_shot_type_keyboard
-from services.cloudflare import generate_with_cloudflare
+from services.cloudflare import generate_with_cloudflare, generate_photoshoot_with_cloudflare
 from services.face_fusion_api import FaceFusionClient
 from services.usage import UsageTracker
 
-# Константа для кнопки "Замена лица на своём изображении"
+# ------------------------------------------------------------
+# Константы для текста кнопок
+# ------------------------------------------------------------
 SWAP_OWN_BUTTON = "🖼️ Замена лица на своём изображении"
+PHOTOSHOOT_BUTTON = "✨ ИИ фотосессия"
 
-# Логирование
+# ------------------------------------------------------------
+# Настройка логирования
+# ------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация
+# ------------------------------------------------------------
+# Инициализация бота и диспетчера
+# ------------------------------------------------------------
 bot = Bot(token=config.TG_BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
+# Клиенты
 facefusion_client = FaceFusionClient(api_url=config.FACEFUSION_URL)
 usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
 
-# Универсальные функции отправки (без изменений)
+# ------------------------------------------------------------
+# Универсальные функции отправки (Message / CallbackQuery)
+# ------------------------------------------------------------
 async def send_message(event: types.Message | types.CallbackQuery, text: str, reply_markup=None):
     if isinstance(event, types.CallbackQuery):
         return await event.message.answer(text, reply_markup=reply_markup)
-    else:
-        return await event.answer(text, reply_markup=reply_markup)
+    return await event.answer(text, reply_markup=reply_markup)
 
 async def send_photo(event: types.Message | types.CallbackQuery, photo, caption: str = None, reply_markup=None):
     if isinstance(event, types.CallbackQuery):
         return await event.message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
-    else:
-        return await event.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+    return await event.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
 
 async def edit_message(event: types.CallbackQuery, text: str, reply_markup=None):
     return await event.message.edit_text(text, reply_markup=reply_markup)
@@ -62,7 +74,9 @@ async def delete_message(event: types.Message | types.CallbackQuery):
     else:
         await event.delete()
 
-# Уведомление админам о старте (без изменений)
+# ------------------------------------------------------------
+# Уведомление администраторам о старте
+# ------------------------------------------------------------
 async def send_startup_notification():
     if not config.ADMIN_IDS:
         logger.info("No ADMIN_IDS configured, skipping startup notification")
@@ -94,9 +108,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         f"👋 Привет! Я {config.BOT_NAME}\n\n"
         "Я могу:\n"
-        "🔄 С заменой лица: ты загружаешь фото лица, а я генерирую изображение по твоему описанию и вставляю это лицо.\n"
-        "✨ Просто генерация: я создаю изображение только по текстовому описанию.\n"
-        f"{SWAP_OWN_BUTTON}: ты загружаешь два своих изображения, и я просто меняю лицо.\n\n"
+        "🔄 **С заменой лица**: загружаешь фото лица → я генерирую картинку по описанию и вставляю это лицо.\n"
+        "✨ **Просто генерация**: создаю изображение только по тексту.\n"
+        f"{SWAP_OWN_BUTTON}: загружаешь два своих изображения, и я просто меняю лицо.\n"
+        f"{PHOTOSHOOT_BUTTON}: загружаешь фото человека → пишешь промпт → я создаю новое изображение с этим человеком в заданной обстановке.\n\n"
         "Выбери действие:",
         reply_markup=get_main_menu()
     )
@@ -142,6 +157,19 @@ async def swap_own_image_start(message: types.Message, state: FSMContext):
         "Лицо должно быть чётко видно."
     )
 
+@dp.message(lambda msg: msg.text == PHOTOSHOOT_BUTTON)
+async def photoshoot_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Ты исчерпал дневной лимит. Завтра лимит обновится.")
+        return
+    await state.set_state(UserStates.waiting_for_face_photoshoot)
+    await state.update_data(mode="photoshoot")
+    await message.answer(
+        "📸 Отправь мне фото человека (можно как фото, так и файл-изображение).\n"
+        "На основе этого фото я сгенерирую новые изображения в разных сценах."
+    )
+
 @dp.message(lambda msg: msg.text == "📊 Моя статистика")
 async def show_stats(message: types.Message):
     user_id = message.from_user.id
@@ -156,22 +184,27 @@ async def show_stats(message: types.Message):
 @dp.message(lambda msg: msg.text == "❓ Помощь")
 async def help_cmd(message: types.Message):
     await message.answer(
-        "📖 Помощь\n\n"
-        "🔄 С заменой лица:\n"
+        "📖 **Помощь**\n\n"
+        "🔄 **С заменой лица**:\n"
         "1. Нажми кнопку «🔄 С заменой лица»\n"
-        "2. Отправь фото с лицом (или файл-изображение)\n"
-        "3. Выбери пол человека\n"
-        "4. Напиши промпт (описание сцены)\n"
+        "2. Отправь фото с лицом\n"
+        "3. Выбери пол\n"
+        "4. Напиши описание сцены\n"
         "5. Выбери стиль\n"
         "6. Выбери тип кадра (портрет или полный рост)\n\n"
-        "✨ Просто генерация:\n"
+        "✨ **Просто генерация**:\n"
         "1. Нажми «✨ Просто генерация»\n"
-        "2. Напиши промпт\n"
+        "2. Напиши описание\n"
         "3. Выбери стиль\n\n"
         f"{SWAP_OWN_BUTTON}:\n"
         "1. Нажми эту кнопку\n"
         "2. Отправь фото с лицом (источник)\n"
-        "3. Отправь целевое изображение (куда вставить лицо)\n\n"
+        "3. Отправь целевое изображение\n\n"
+        f"{PHOTOSHOOT_BUTTON}:\n"
+        "1. Нажми эту кнопку\n"
+        "2. Отправь фото человека\n"
+        "3. Напиши промпт (например: 'на пляже на закате')\n"
+        "4. Получи новое изображение с тем же человеком в заданной обстановке\n\n"
         f"Дневной лимит: {config.DAILY_LIMIT} генераций"
     )
 
@@ -179,19 +212,20 @@ async def help_cmd(message: types.Message):
 async def about_cmd(message: types.Message):
     await message.answer(
         f"ℹ️ О боте {config.BOT_NAME}\n\n"
-        "Этот бот создан для генерации изображений по тексту с возможностью замены лица на фотографии.\n\n"
-        "🔹 Технологии:\n"
-        "   • Генерация: Cloudflare Workers AI\n"
-        "   • Замена лица: FaceFusion\n\n"
-        f"🔹 Лимиты:\n"
-        f"   • {config.DAILY_LIMIT} генераций в день на пользователя (сбрасывается в полночь по UTC)\n\n"
-        "🔹 Как использовать:\n"
-        "   Нажми «🔄 С заменой лица» или «✨ Просто генерация» и следуй инструкциям.\n\n"
+        "Этот бот создан для генерации изображений по тексту с возможностью замены лица.\n\n"
+        "🔹 **Технологии**:\n"
+        "   • Генерация: FLUX / Stable Diffusion (через Cloudflare Workers)\n"
+        "   • Замена лица: FaceFusion\n"
+        "   • ИИ фотосессия: Stable Diffusion img2img\n\n"
+        f"🔹 **Лимиты**:\n"
+        f"   • {config.DAILY_LIMIT} генераций в день на пользователя\n\n"
+        "🔹 **Как использовать**:\n"
+        "   Нажми любую кнопку в меню и следуй инструкциям.\n\n"
         "По всем вопросам обращайтесь к администратору."
     )
 
 # ------------------------------------------------------------
-# Загрузка лица (фото и документы)
+# Загрузка лица (для режимов с заменой лица и фотосессии)
 # ------------------------------------------------------------
 @dp.message(UserStates.waiting_for_face, F.photo)
 async def handle_face_photo(message: types.Message, state: FSMContext):
@@ -199,15 +233,17 @@ async def handle_face_photo(message: types.Message, state: FSMContext):
     file = await bot.get_file(photo.file_id)
     image_bytes = await bot.download_file(file.file_path)
     await state.update_data(face_image=image_bytes.read())
+
     data = await state.get_data()
     mode = data.get("mode")
+
     if mode == "swap_own":
         await state.set_state(UserStates.waiting_for_target_image)
         await message.answer(
-            "✅ Фото лица получено. Теперь отправь мне целевое изображение (куда нужно вставить лицо).\n"
+            "✅ Фото лица получено. Теперь отправь мне **целевое изображение** (куда нужно вставить лицо).\n"
             "Это может быть фото человека, пейзаж или любая картинка."
         )
-    else:
+    else:  # обычный режим с генерацией
         await state.set_state(UserStates.waiting_for_gender)
         await message.answer(
             "✅ Фото лица получено. Теперь укажи пол человека на фото:",
@@ -220,12 +256,14 @@ async def handle_face_document(message: types.Message, state: FSMContext):
         file = await bot.get_file(message.document.file_id)
         image_bytes = await bot.download_file(file.file_path)
         await state.update_data(face_image=image_bytes.read())
+
         data = await state.get_data()
         mode = data.get("mode")
+
         if mode == "swap_own":
             await state.set_state(UserStates.waiting_for_target_image)
             await message.answer(
-                "✅ Фото лица получено. Теперь отправь мне целевое изображение (куда нужно вставить лицо)."
+                "✅ Фото лица получено. Теперь отправь мне **целевое изображение**."
             )
         else:
             await state.set_state(UserStates.waiting_for_gender)
@@ -241,6 +279,38 @@ async def handle_face_invalid(message: types.Message):
     await message.answer("Пожалуйста, отправь фотографию или файл с изображением.")
 
 # ------------------------------------------------------------
+# Загрузка лица для фотосессии (отдельный обработчик)
+# ------------------------------------------------------------
+@dp.message(UserStates.waiting_for_face_photoshoot, F.photo)
+async def handle_photoshoot_face_photo(message: types.Message, state: FSMContext):
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    image_bytes = await bot.download_file(file.file_path)
+    await state.update_data(source_image=image_bytes.read())
+    await state.set_state(UserStates.waiting_for_prompt_photoshoot)
+    await message.answer(
+        "✅ Фото получено. Теперь напиши текстовое описание того, что должно быть на новом изображении.\n"
+        "Например: 'в стиле киберпанк, на фоне неонового города' или 'на пляже на закате'."
+    )
+
+@dp.message(UserStates.waiting_for_face_photoshoot, F.document)
+async def handle_photoshoot_face_document(message: types.Message, state: FSMContext):
+    if message.document.mime_type and message.document.mime_type.startswith('image/'):
+        file = await bot.get_file(message.document.file_id)
+        image_bytes = await bot.download_file(file.file_path)
+        await state.update_data(source_image=image_bytes.read())
+        await state.set_state(UserStates.waiting_for_prompt_photoshoot)
+        await message.answer(
+            "✅ Фото получено. Теперь напиши текстовое описание того, что должно быть на новом изображении."
+        )
+    else:
+        await message.answer("Пожалуйста, отправь изображение (фото или документ с картинкой).")
+
+@dp.message(UserStates.waiting_for_face_photoshoot)
+async def handle_photoshoot_face_invalid(message: types.Message):
+    await message.answer("Пожалуйста, отправь фотографию или файл с изображением.")
+
+# ------------------------------------------------------------
 # Выбор пола
 # ------------------------------------------------------------
 @dp.callback_query(lambda c: c.data.startswith("gender_"))
@@ -249,8 +319,8 @@ async def process_gender(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(gender=gender)
     await state.set_state(UserStates.waiting_for_prompt)
     await callback.message.edit_text(
-        "✅ Пол учтён. Теперь напиши текстовое описание того, что должно быть на финальном изображении.\n"
-        "Например: в костюме на фоне космоса (пол будет добавлен автоматически)"
+        "✅ Пол учтён. Теперь напиши **текстовое описание** того, что должно быть на финальном изображении.\n"
+        "Например: в костюме на фоне космоса"
     )
 
 # ------------------------------------------------------------
@@ -265,16 +335,15 @@ async def handle_prompt(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     gender = data.get("gender")
-    gender_word = "мужчина" if gender == "male" else "профессиональное фото 30-летней девушки"  # используем "девушка" для обхода NSFW
+    # Используем "девушка" для обхода NSFW-фильтров
+    gender_word = "мужчина" if gender == "male" else "девушка"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
-
-    # ⚠️ Убрано автоматическое добавление "face clearly visible" – теперь это будет на шаге выбора типа кадра
 
     await state.update_data(prompt=prompt)
     await state.set_state(UserStates.choosing_style)
     await message.answer(
-        "Выбери стиль для генерации или введи свой:",
+        "Выбери **стиль** для генерации или введи свой:",
         reply_markup=get_style_keyboard()
     )
 
@@ -290,9 +359,21 @@ async def handle_simple_prompt(message: types.Message, state: FSMContext):
     await state.update_data(prompt=prompt)
     await state.set_state(UserStates.choosing_style)
     await message.answer(
-        "Выбери стиль для генерации или введи свой:",
+        "Выбери **стиль** для генерации или введи свой:",
         reply_markup=get_style_keyboard()
     )
+
+# ------------------------------------------------------------
+# Обработка промпта для фотосессии
+# ------------------------------------------------------------
+@dp.message(UserStates.waiting_for_prompt_photoshoot)
+async def handle_photoshoot_prompt(message: types.Message, state: FSMContext):
+    prompt = message.text.strip()
+    if not prompt:
+        await message.answer("Промпт не может быть пустым. Напиши описание.")
+        return
+    await state.update_data(photoshoot_prompt=prompt)
+    await proceed_photoshoot(message, state)
 
 # ------------------------------------------------------------
 # Выбор стиля
@@ -319,7 +400,7 @@ async def choose_preset_style(callback: types.CallbackQuery, state: FSMContext):
     # Переходим к выбору типа кадра
     await state.set_state(UserStates.choosing_shot_type)
     await callback.message.edit_text(
-        "Выберите тип кадра:",
+        "Выбери **тип кадра**:",
         reply_markup=get_shot_type_keyboard()
     )
 
@@ -341,7 +422,7 @@ async def handle_custom_style(message: types.Message, state: FSMContext):
     # Переходим к выбору типа кадра
     await state.set_state(UserStates.choosing_shot_type)
     await message.answer(
-        "Выберите тип кадра:",
+        "Выбери **тип кадра**:",
         reply_markup=get_shot_type_keyboard()
     )
 
@@ -356,25 +437,35 @@ async def choose_shot_type(callback: types.CallbackQuery, state: FSMContext):
     chosen_style = data.get("chosen_style")
 
     if not prompt or not chosen_style:
-        await callback.message.edit_text("❌ Ошибка: не хватает данных. Начните заново.")
+        await callback.message.edit_text("❌ Ошибка: не хватает данных. Начни заново.")
         await state.clear()
         return
 
-    # Добавляем суффикс в зависимости от типа кадра
     if shot_type == "shot_portrait":
-        prompt = prompt + ", face clearly visible"
-    else:  # shot_fullbody
-        prompt = prompt + ", full body shot"
+        # Портрет: лицо крупно, в кадр
+        enhanced_prompt = f"portrait, {prompt}, face looking at camera, clearly visible, detailed face"
+        negative_prompt = "full body, whole body, multiple people, blurry"
+        width, height = 1024, 1024
+    else:
+        # Полный рост: человек целиком, лицо в кадр, вертикально
+        enhanced_prompt = f"full body shot full body shot, {prompt}, standing, from head to toe, facing camera, looking at viewer, face clearly visible, vertical composition"
+        negative_prompt = "close-up, portrait, upper body, chest shot, profile, looking away, blurry face"
+        width, height = 768, 1024  # вертикальное соотношение
 
-    await state.update_data(prompt=prompt)
-    # Запускаем генерацию
+    await state.update_data(
+        prompt=enhanced_prompt,
+        shot_type=shot_type,
+        width=width,
+        height=height,
+        negative_prompt=negative_prompt
+    )
     await proceed_to_generation(callback, state)
 
 @dp.callback_query(lambda c: c.data == "back_to_style")
 async def back_to_style(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.choosing_style)
     await callback.message.edit_text(
-        "Выбери стиль для генерации или введи свой:",
+        "Выбери **стиль** для генерации или введи свой:",
         reply_markup=get_style_keyboard()
     )
 
@@ -404,7 +495,7 @@ async def handle_target_invalid(message: types.Message):
     await message.answer("Пожалуйста, отправь фотографию или файл с изображением.")
 
 async def perform_swap_only(event: types.Message | types.CallbackQuery, state: FSMContext):
-    """Функция для замены лица без генерации (только своп)."""
+    """Замена лица без генерации (только своп)."""
     data = await state.get_data()
     face_image = data.get("face_image")
     target_image = data.get("target_image")
@@ -443,13 +534,16 @@ async def perform_swap_only(event: types.Message | types.CallbackQuery, state: F
         await send_message(event, "Что делаем дальше?", reply_markup=get_main_menu())
 
 # ------------------------------------------------------------
-# Процесс генерации (общий)
+# Процесс генерации (с заменой лица или без)
 # ------------------------------------------------------------
 async def proceed_to_generation(event: types.Message | types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     face_image = data.get("face_image")
     prompt = data.get("prompt")
     chosen_style = data.get("chosen_style")
+    width = data.get("width", 1024)
+    height = data.get("height", 1024)
+    negative_prompt = data.get("negative_prompt", "")
 
     if not prompt or not chosen_style:
         await send_message(event, "❌ Ошибка: не хватает данных для генерации. Начни заново.")
@@ -465,12 +559,18 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         return
 
     await state.set_state(UserStates.generating)
-    status_msg = await send_message(event, "⏳ Генерирую изображение через Cloudflare...")
+    status_msg = await send_message(event, "⏳ Генерирую изображение через FLUX...")
 
     try:
-        image_bytes = await generate_with_cloudflare(full_prompt, style=chosen_style)
+        image_bytes = await generate_with_cloudflare(
+            prompt=full_prompt,
+            style=chosen_style,
+            width=width,
+            height=height,
+            negative_prompt=negative_prompt
+        )
         if not image_bytes:
-            raise Exception("Cloudflare did not return an image")
+            raise Exception("FLUX не вернул изображение")
 
         if face_image:
             if isinstance(status_msg, types.Message):
@@ -500,7 +600,64 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         await send_message(event, "Что делаем дальше?", reply_markup=get_main_menu())
 
 # ------------------------------------------------------------
-# Отладочный хендлер для необработанных сообщений
+# Процесс фотосессии (img2img)
+# ------------------------------------------------------------
+async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    source_image = data.get("source_image")
+    prompt = data.get("photoshoot_prompt")
+
+    if not source_image or not prompt:
+        await send_message(event, "❌ Ошибка: не хватает данных. Начни заново.")
+        await state.clear()
+        return
+
+    user_id = event.from_user.id
+    if not usage.increment(user_id):
+        await send_message(event, "❌ Дневной лимит исчерпан.")
+        await state.clear()
+        return
+
+    await state.set_state(UserStates.generating)
+    status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
+
+    try:
+        width, height = 1024, 1024  # можно сделать настраиваемым позже
+        strength = 0.8  # сила изменений (0.0 - копия, 1.0 - максимум)
+        negative_prompt = "bad quality, blurry, distorted face, extra limbs"
+
+        image_bytes = await generate_photoshoot_with_cloudflare(
+            prompt=prompt,
+            source_image_bytes=source_image,
+            width=width,
+            height=height,
+            strength=strength,
+            negative_prompt=negative_prompt
+        )
+
+        if not image_bytes:
+            raise Exception("Cloudflare не вернул изображение")
+
+        caption = f"✅ Готово!\nПромпт: {prompt}"
+
+        if isinstance(status_msg, types.Message):
+            await status_msg.delete()
+
+        await send_photo(event, BufferedInputFile(image_bytes, filename="photoshoot.jpg"), caption=caption)
+
+    except Exception as e:
+        logger.exception("Photoshoot generation error")
+        error_text = f"❌ Ошибка: {str(e)}"
+        if isinstance(status_msg, types.Message):
+            await status_msg.edit_text(error_text)
+        else:
+            await send_message(event, error_text)
+    finally:
+        await state.clear()
+        await send_message(event, "Что делаем дальше?", reply_markup=get_main_menu())
+
+# ------------------------------------------------------------
+# Отладочный хендлер (для необработанных сообщений)
 # ------------------------------------------------------------
 @dp.message()
 async def debug_unhandled(message: types.Message):
