@@ -293,7 +293,7 @@ async def handle_prompt(message: types.Message, state: FSMContext):
         prompt = f"{gender_word}, {prompt}"
 
     # Для режима с заменой лица добавляем требование, чтобы лицо было видно чётко
-    prompt = prompt + ", face clearly visible, no mask, no occlusions, front view"
+    prompt = prompt + ", face clearly visible"
 
     await state.update_data(prompt=prompt)
     await state.set_state(UserStates.choosing_style)
