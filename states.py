@@ -6,7 +6,8 @@ class UserStates(StatesGroup):
     waiting_for_gender = State()
     waiting_for_prompt = State()
     waiting_for_prompt_simple = State()
-    waiting_for_target_image = State()  # новое состояние для загрузки целевого изображения
     choosing_style = State()
+    choosing_shot_type = State()          # новое состояние
     waiting_for_custom_style = State()
+    waiting_for_target_image = State()
     generating = State()
