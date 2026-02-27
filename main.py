@@ -296,7 +296,7 @@ async def handle_prompt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     gender = data.get("gender")
     # ✅ ИСПРАВЛЕНО: вместо "женщина" используем "девушка", чтобы избежать NSFW-блокировки Cloudflare
-    gender_word = "мужчина" if gender == "male" else "девушка 25-30 лет"
+    gender_word = "мужчина" if gender == "male" else "female person"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
 
