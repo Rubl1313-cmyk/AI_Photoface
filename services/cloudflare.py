@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------
 # Генерация изображения по тексту (text-to-image)
-# Использует модель FLUX (или другую)
 # ------------------------------------------------------------
 async def generate_with_cloudflare(
     prompt: str,
@@ -38,14 +37,14 @@ async def generate_with_cloudflare(
             logger.error(f"❌ text-to-image error: {e}")
             return None
 
-
 # ------------------------------------------------------------
-# Генерация изображения на основе фото (img2img)
-# Использует stable-diffusion-v1-5-img2img
+# Генерация изображения на основе фото (img2img) – с width/height
 # ------------------------------------------------------------
 async def generate_photoshoot_with_cloudflare(
     prompt: str,
     source_image_bytes: bytes,
+    width: int = 512,
+    height: int = 512,
     strength: float = 0.8,
     guidance: float = 7.5,
     num_steps: int = 20,
@@ -54,13 +53,15 @@ async def generate_photoshoot_with_cloudflare(
     import os
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
 
-    # Кодируем изображение в base64
+    # Кодируем исходное изображение в base64
     image_b64 = base64.b64encode(source_image_bytes).decode('utf-8')
 
-    # Только поля, поддерживаемые моделью img2img
+    # Формируем полный payload, включая width/height
     payload = {
         "prompt": prompt,
         "image_b64": image_b64,
+        "width": width,
+        "height": height,
         "strength": strength,
         "guidance": guidance,
         "num_steps": num_steps,
@@ -68,7 +69,7 @@ async def generate_photoshoot_with_cloudflare(
     }
     headers = {"Content-Type": "application/json"}
 
-    logger.info(f"📸 img2img: {prompt[:50]}..., strength={strength}")
+    logger.info(f"📸 img2img: {prompt[:50]}..., size={width}x{height}, strength={strength}")
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(url, json=payload, headers=headers, timeout=120)
