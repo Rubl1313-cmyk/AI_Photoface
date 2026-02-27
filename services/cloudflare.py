@@ -2,7 +2,9 @@
 import httpx
 import base64
 import logging
-from typing import Optional, Dict, Any, List
+import asyncio
+import json
+from typing import Optional, Dict, Any
 from PIL import Image, ImageDraw, ImageFilter
 import io
 
@@ -55,6 +57,11 @@ async def detect_face_hf(image_bytes: bytes) -> Optional[Dict[str, int]]:
     Детекция лица через Hugging Face Inference API
     Возвращает bbox: {x, y, width, height} или None
     """
+    global HF_TOKEN
+    if not HF_TOKEN:
+        import os
+        HF_TOKEN = os.getenv("HF_TOKEN", "")
+    
     if not HF_TOKEN:
         logger.warning("⚠️ HF_TOKEN not set")
         return None
@@ -137,8 +144,8 @@ def create_inpainting_mask(
         return fb_out.getvalue()
 
 
-def _no_none( Dict[str, Any]) -> Dict[str, Any]:
-    """Удаляет None значения из dict"""
+def _no_none(data: Dict[str, Any]) -> Dict[str, Any]:
+    """✅ ИСПРАВЛЕНО: Удаляет None значения из dict"""
     return {k: v for k, v in data.items() if v is not None}
 
 
@@ -193,7 +200,7 @@ async def generate_inpainting_photoshoot(
     3. Отправляем в Cloudflare inpainting модель
     4. Возвращаем результат
     """
-    import os, asyncio
+    import os
     
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
