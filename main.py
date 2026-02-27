@@ -381,7 +381,7 @@ async def handle_photoshoot_prompt(message: types.Message, state: FSMContext):
         logger.info(f"🔤 Перевод промпта фотосессии: '{user_prompt}' → '{en_prompt}'")
     except Exception as e:
         logger.error(f"Ошибка перевода: {e}")
-        en_prompt = user_prompt  # если перевод не удался, оставляем как есть (но модель может хуже понять)
+        en_prompt = user_prompt  # если перевод не удался, оставляем как есть
 
     await state.update_data(photoshoot_prompt=en_prompt)
     await proceed_photoshoot(message, state)
@@ -611,7 +611,7 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         await send_message(event, "Что делаем дальше?", reply_markup=get_main_menu())
 
 # ------------------------------------------------------------
-# Процесс фотосессии (img2img)
+# Процесс фотосессии (img2img) – ИСПРАВЛЕННАЯ ВЕРСИЯ
 # ------------------------------------------------------------
 async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -633,16 +633,13 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
     status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
 
     try:
-        # Можно задать размеры и силу изменений (позже можно добавить выбор пользователем)
-        width, height = 512, 512  # Уменьшаем размер для экономии и совместимости
+        # Параметры для img2img (без width/height)
         strength = 0.8
         negative_prompt = "bad quality, blurry, distorted face, extra limbs"
 
         image_bytes = await generate_photoshoot_with_cloudflare(
             prompt=prompt,
             source_image_bytes=source_image,
-            width=width,
-            height=height,
             strength=strength,
             negative_prompt=negative_prompt
         )
