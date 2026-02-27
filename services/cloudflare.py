@@ -55,63 +55,17 @@ def detect_face_mediapipe_precise(image_bytes: bytes) -> Optional[Dict[str, int]
     Возвращает bbox {x, y, width, height} или None
     """
     try:
-        import mediapipe as mp
+        # 🔑 Правильный импорт для mediapipe>=0.10
+        from mediapipe import solutions
+        from mediapipe.framework.formats import landmark_pb2
         import cv2
-        
-        img_array = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        
-        if img is None:
-            logger.error("❌ Failed to decode image")
-            return None
-        
-        h, w = img.shape[:2]
-        logger.info(f"📐 Image loaded: {w}x{h}px")
-        
-        mp_face_detection = mp.solutions.face_detection
-        
-        with mp_face_detection.FaceDetection(
-            min_detection_confidence=0.5,
-            model_selection=1
-        ) as face_detection:
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            results = face_detection.process(rgb_image)
-            
-            if results.detections:
-                faces = []
-                for i, detection in enumerate(results.detections):
-                    bbox = detection.location_data.relative_bounding_box
-                    score = detection.score[0] if detection.score else 0
-                    
-                    x = max(0, int(bbox.xmin * w))
-                    y = max(0, int(bbox.ymin * h))
-                    width = min(w - x, int(bbox.width * w))
-                    height = min(h - y, int(bbox.height * h))
-                    area = width * height
-                    
-                    faces.append({
-                        "x": x, "y": y, "width": width, "height": height,
-                        "score": score, "area": area
-                    })
-                    logger.info(f"  Face {i+1}: {width}x{height}px, score={score:.2f}")
-                
-                best_face = max(faces, key=lambda f: f["area"])
-                logger.info(f"✅ Selected best face: {best_face['width']}x{best_face['height']}px")
-                
-                return {
-                    "x": best_face["x"], "y": best_face["y"],
-                    "width": best_face["width"], "height": best_face["height"],
-                    "score": best_face["score"]
-                }
-            else:
-                logger.warning("⚠️ MediaPipe: no faces detected")
-                return None
-                
+…                
     except ImportError as e:
-        logger.error(f"❌ MediaPipe not installed: {e}")
+        logger.error(f"❌ MediaPipe import error: {e}")
+        logger.error("💡 Check requirements.txt: mediapipe==0.10.9")
         return None
     except Exception as e:
-        logger.error(f"❌ MediaPipe error: {type(e).__name__}: {e}")
+        logger.error(f"❌ MediaPipe runtime error: {type(e).__name__}: {e}")
         return None
 
 
