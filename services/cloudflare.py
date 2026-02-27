@@ -181,7 +181,7 @@ def create_inpainting_mask_precise(
 
 
 # ✅ ИСПРАВЛЕНО: параметр называется 'data'
-def _no_none( Dict[str, Any]) -> Dict[str, Any]:
+def _no_none(data: Dict[str, Any]) -> Dict[str, Any]:
     """Удаляет None значения из dict"""
     return {k: v for k, v in data.items() if v is not None}
 
