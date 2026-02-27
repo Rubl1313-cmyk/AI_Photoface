@@ -2,12 +2,25 @@ import httpx
 import base64
 import logging
 from typing import Optional
+from PIL import Image
+import io
 
 logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------
-# Генерация изображения по тексту (text-to-image)
-# ------------------------------------------------------------
+def convert_to_png(image_bytes: bytes) -> bytes:
+    """Конвертирует изображение в формат PNG."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Конвертируем в RGB, если нужно
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        output = io.BytesIO()
+        img.save(output, format='PNG')
+        return output.getvalue()
+    except Exception as e:
+        logger.error(f"Ошибка конвертации в PNG: {e}")
+        return image_bytes  # возвращаем оригинал, если не удалось
+
 async def generate_with_cloudflare(
     prompt: str,
     style: str = None,
@@ -37,9 +50,6 @@ async def generate_with_cloudflare(
             logger.error(f"❌ text-to-image error: {e}")
             return None
 
-# ------------------------------------------------------------
-# Генерация изображения на основе фото (img2img) – с width/height
-# ------------------------------------------------------------
 async def generate_photoshoot_with_cloudflare(
     prompt: str,
     source_image_bytes: bytes,
@@ -53,10 +63,10 @@ async def generate_photoshoot_with_cloudflare(
     import os
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
 
-    # Кодируем исходное изображение в base64
-    image_b64 = base64.b64encode(source_image_bytes).decode('utf-8')
+    # Конвертируем в PNG
+    png_bytes = convert_to_png(source_image_bytes)
+    image_b64 = base64.b64encode(png_bytes).decode('utf-8')
 
-    # Формируем полный payload, включая width/height
     payload = {
         "prompt": prompt,
         "image_b64": image_b64,
