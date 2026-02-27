@@ -115,8 +115,8 @@ async def generate_photoshoot_with_cloudflare(
     width: int = 512,
     height: int = 512,
     strength: float = 0.5,
-    guidance_scale: float = 7.5,
-    num_steps: int = 20,
+    guidance_scale: float = 7.5,   # ← должен приниматься
+    num_steps: int = 20,           # ← должен приниматься
     negative_prompt: str = "bad quality, blurry, distorted, extra limbs",
     max_image_size: int = MAX_IMAGE_DIMENSION,
     image_quality: int = JPEG_QUALITY
