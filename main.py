@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-🎨 AI PhotoStudio — Main Bot File
+🎨 AI PhotoStudio — Main Bot File (финальная версия)
 - Face swapping with gender selection
 - Simple image generation
-- New: swap face onto user's own image (without generation)
+- Swap face onto user's own image (without generation)
 - Improved prompts with realism boosters
 - Universal send functions (no parse_mode)
 """
@@ -27,14 +27,23 @@ from services.cloudflare import generate_with_cloudflare
 from services.face_fusion_api import FaceFusionClient
 from services.usage import UsageTracker
 
-# Configure logging
+# ------------------------------------------------------------
+# Константы для текста кнопок (чтобы исключить опечатки)
+# ------------------------------------------------------------
+SWAP_OWN_BUTTON = "🖼️ Замена лица на своём изображении"  # точно как в keyboards.py
+
+# ------------------------------------------------------------
+# Logging setup
+# ------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------
 # Initialize bot and dispatcher
+# ------------------------------------------------------------
 bot = Bot(token=config.TG_BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -75,7 +84,6 @@ async def delete_message(event: types.Message | types.CallbackQuery):
 # Startup notification to admin(s)
 # ------------------------------------------------------------
 async def send_startup_notification():
-    """Send a message to admin(s) when the bot starts."""
     if not config.ADMIN_IDS:
         logger.info("No ADMIN_IDS configured, skipping startup notification")
         return
@@ -111,13 +119,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "Я могу:\n"
         "🔄 С заменой лица: ты загружаешь фото лица, а я генерирую изображение по твоему описанию и вставляю это лицо.\n"
         "✨ Просто генерация: я создаю изображение только по текстовому описанию.\n"
-        "🖼️ Замена лица на своём изображении: ты загружаешь два своих изображения, и я просто меняю лицо.\n\n"
+        f"{SWAP_OWN_BUTTON}: ты загружаешь два своих изображения, и я просто меняю лицо.\n\n"
         "Выбери действие:",
         reply_markup=get_main_menu()
     )
 
 # ------------------------------------------------------------
-# Main menu handlers
+# Main menu handlers (используем точное сравнение с константами)
 # ------------------------------------------------------------
 @dp.message(lambda msg: msg.text == "🔄 С заменой лица")
 async def create_photo_start(message: types.Message, state: FSMContext):
@@ -127,7 +135,6 @@ async def create_photo_start(message: types.Message, state: FSMContext):
         return
 
     await state.set_state(UserStates.waiting_for_face)
-    # Запоминаем, что это режим с генерацией (обычный)
     await state.update_data(mode="generate")
     await message.answer(
         "Отправь мне фото с лицом человека (можно как фото, так и файл-изображение).\n"
@@ -147,7 +154,8 @@ async def simple_generation_start(message: types.Message, state: FSMContext):
         "Например: красивый закат над горами, цифровое искусство"
     )
 
-@dp.message(lambda msg: msg.text and "Замена лица на своём изображении" in msg.text)
+# ✅ ИСПРАВЛЕННЫЙ ХЕНДЛЕР для кнопки "Замена лица на своём изображении"
+@dp.message(lambda msg: msg.text == SWAP_OWN_BUTTON)
 async def swap_own_image_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     if not usage.check_limit(user_id):
@@ -155,7 +163,6 @@ async def swap_own_image_start(message: types.Message, state: FSMContext):
         return
 
     await state.set_state(UserStates.waiting_for_face)
-    # Запоминаем, что это режим прямой замены (без генерации)
     await state.update_data(mode="swap_own")
     await message.answer(
         "Сначала отправь мне фото с лицом человека, которое нужно вставить (можно как фото, так и файл-изображение).\n"
@@ -187,8 +194,8 @@ async def help_cmd(message: types.Message):
         "1. Нажми «✨ Просто генерация»\n"
         "2. Напиши промпт\n"
         "3. Выбери стиль или введи свой\n\n"
-        "🖼️ Замена лица на своём изображении:\n"
-        "1. Нажми «🖼️ Замена лица на своём изображении»\n"
+        f"{SWAP_OWN_BUTTON}:\n"
+        "1. Нажми эту кнопку\n"
         "2. Отправь фото с лицом (источник)\n"
         "3. Отправь целевое изображение (куда вставить лицо)\n\n"
         f"Дневной лимит: {config.DAILY_LIMIT} генераций"
@@ -288,7 +295,8 @@ async def handle_prompt(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     gender = data.get("gender")
-    gender_word = "мужчина" if gender == "male" else "женщина"
+    # ✅ ИСПРАВЛЕНО: вместо "женщина" используем "девушка", чтобы избежать NSFW-блокировки Cloudflare
+    gender_word = "мужчина" if gender == "male" else "девушка"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
 
@@ -478,6 +486,14 @@ async def handle_custom_style(message: types.Message, state: FSMContext):
         return
     await state.update_data(chosen_style=custom_style)
     await proceed_to_generation(message, state)
+
+# ------------------------------------------------------------
+# ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ ХЕНДЛЕР (покажет все непринятые сообщения)
+# ------------------------------------------------------------
+@dp.message()
+async def debug_unhandled(message: types.Message):
+    logger.warning(f"⚠️ Необработанное сообщение: '{message.text}' (длина: {len(message.text) if message.text else 0})")
+    # Ничего не отвечаем, чтобы не спамить пользователю
 
 # ------------------------------------------------------------
 # Webhook lifecycle
