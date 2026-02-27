@@ -10,7 +10,7 @@ _translator = GoogleTranslator(source='ru', target='en')
 
 # Бустеры для каждого стиля (повышают качество и соответствие стилю)
 REALISM_BOOSTERS = {
-    "realistic": "photorealistic, highly detailed, 8k, sharp focus, professional photo, natural lighting, depth of field, intricate details, ultra high quality",
+    "realistic": "photorealistic, highly detailed, 8k, sharp focus, professional photo, natural lighting, depth of field, intricate details, ultra high quality, shot on DSLR, f/2.8 aperture, bokeh, golden hour lighting, hyperrealistic, texture details, skin pores, hair details",
     "anime": "anime style, cel shaded, vibrant colors, clean lines, Japanese animation style",
     "oil": "oil painting, impasto, textured brushstrokes, classic art, gallery quality",
     "sketch": "pencil sketch, hand-drawn, artistic, monochrome, detailed shading",
@@ -18,7 +18,7 @@ REALISM_BOOSTERS = {
     "baroque": "baroque style, dramatic lighting, rich colors, classical art, ornate",
     "surreal": "surrealism, dreamlike, impossible scenes, Salvador Dali style",
     "comic": "comic book style, bold outlines, halftone dots, vibrant, sequential art",
-    "photoreal": "photorealistic, ultra realistic, 4k, detailed, sharp, professional photography",
+    "photoreal": "photorealistic, ultra realistic, 4k, detailed, sharp, professional photography, shot on Sony A7R IV, 50mm lens, shallow depth of field, natural skin texture, ray tracing global illumination, physically based rendering, cinematic lighting, octane render",
     "watercolor": "watercolor painting, soft edges, translucent colors, artistic",
     "pastel": "pastel colors, soft, gentle, chalk drawing, artistic",
     "3d": "3D render, octane render, cinematic lighting, highly detailed, CGI"
