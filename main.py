@@ -48,7 +48,7 @@ QUALITY_TOKENS = (
     ", professional photography, studio lighting, sharp focus, 8k uhd, dslr, "
     "soft lighting, high quality, film grain, detailed face, natural skin texture, "
     "realistic eyes, symmetrical face, cinematic composition, depth of field, bokeh"
-
+)
 # ------------------------------------------------------------
 # Настройка логирования
 # ------------------------------------------------------------
