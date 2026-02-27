@@ -59,7 +59,57 @@ def detect_face_mediapipe_precise(image_bytes: bytes) -> Optional[Dict[str, int]
         from mediapipe import solutions
         from mediapipe.framework.formats import landmark_pb2
         import cv2
-…                
+        
+        # Конвертируем bytes → numpy array
+        img_array = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            logger.error("❌ Failed to decode image")
+            return None
+        
+        h, w = img.shape[:2]
+        logger.info(f"📐 Image loaded: {w}x{h}px")
+        
+        # 🔑 Используем full-range модель
+        with solutions.face_detection.FaceDetection(
+            min_detection_confidence=0.5,
+            model_selection=1  # 1=full-range для общих фото
+        ) as face_detection:
+            # BGR → RGB
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            results = face_detection.process(rgb_image)
+            
+            if results.detections:
+                # Выбираем самое крупное лицо
+                faces = []
+                for detection in results.detections:
+                    bbox = detection.location_data.relative_bounding_box
+                    score = detection.score[0] if detection.score else 0
+                    
+                    x = max(0, int(bbox.xmin * w))
+                    y = max(0, int(bbox.ymin * h))
+                    width = min(w - x, int(bbox.width * w))
+                    height = min(h - y, int(bbox.height * h))
+                    area = width * height
+                    
+                    faces.append({
+                        "x": x, "y": y, "width": width, "height": height,
+                        "score": score, "area": area
+                    })
+                
+                best = max(faces, key=lambda f: f["area"])
+                logger.info(f"✅ Face detected: {best['width']}x{best['height']}px, score={best['score']:.2f}")
+                
+                return {
+                    "x": best["x"], "y": best["y"],
+                    "width": best["width"], "height": best["height"],
+                    "score": best["score"]
+                }
+            else:
+                logger.warning("⚠️ No faces detected by MediaPipe")
+                return None
+                
     except ImportError as e:
         logger.error(f"❌ MediaPipe import error: {e}")
         logger.error("💡 Check requirements.txt: mediapipe==0.10.9")
@@ -72,20 +122,21 @@ def detect_face_mediapipe_precise(image_bytes: bytes) -> Optional[Dict[str, int]
 def create_inpainting_mask_precise(
     image_bytes: bytes,
     bbox: Optional[Dict[str, int]],
-    face_padding_percent: float = 0.35,
-    blur_radius: int = 15
+    face_padding_percent: float = 0.40,  # 🔑 40% padding
+    blur_radius: int = 18
 ) -> bytes:
     """
-    🔥 ТОЧНАЯ маска: ⚫ чёрный = сохранить, ⚪ белый = изменить
+    🔥 Надёжная маска: даже если лицо не детектировано
     """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         w, h = img.size
         
-        mask = Image.new("L", (w, h), 255)
+        mask = Image.new("L", (w, h), 255)  # Белый = менять
         draw = ImageDraw.Draw(mask)
         
-        if bbox and bbox.get("width", 0) > 20 and bbox.get("height", 0) > 20:
+        if bbox and bbox.get("width", 0) > 25 and bbox.get("height", 0) > 25:
+            # 🔑 Использовать детектированное лицо
             cx = bbox["x"] + bbox["width"] // 2
             cy = bbox["y"] + bbox["height"] // 2
             padding_x = int(bbox["width"] * face_padding_percent)
@@ -93,34 +144,64 @@ def create_inpainting_mask_precise(
             rw = bbox["width"] // 2 + padding_x
             rh = bbox["height"] // 2 + padding_y
             
-            logger.info(f"🎯 Face mask: center=({cx},{cy}), radius=({rw},{rh})")
             draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
             
             # Плавный переход
-            for i in range(1, 4):
-                alpha = int(64 * i)
-                rw2 = rw + (i * 5)
-                rh2 = rh + (i * 5)
-                draw.ellipse([cx-rw2, cy-rh2, cx+rw2, cy+rh2], fill=alpha)
+            for i in range(1, 5):
+                alpha = int(50 * i)
+                draw.ellipse([cx-rw-i*6, cy-rh-i*6, cx+rw+i*6, cy+rh+i*6], fill=alpha)
+                
         else:
-            # Fallback эвристика
-            if h > w:
-                face_w, face_h = int(w * 0.60), int(h * 0.50)
-                face_x, face_y = (w - face_w) // 2, int(h * 0.08)
-            else:
-                face_w, face_h = int(w * 0.50), int(h * 0.60)
-                face_x, face_y = (w - face_w) // 2, int(h * 0.10)
+            # 🔥 УЛУЧШЕННАЯ эвристика для портретов
+            # Адаптируется под соотношение сторон
+            if h > w * 1.3:  # Вертикальное (портрет)
+                # Лицо в верхней трети, занимает ~55% ширины
+                face_w = int(w * 0.55)
+                face_h = int(h * 0.42)
+                face_x = (w - face_w) // 2
+                face_y = int(h * 0.06)  # 6% от верха
+                padding = 55
+                
+            elif w > h * 1.3:  # Горизонтальное
+                face_w = int(w * 0.35)
+                face_h = int(h * 0.65)
+                face_x = (w - face_w) // 2
+                face_y = int(h * 0.12)
+                padding = 45
+                
+            else:  # Квадратное
+                face_w = int(w * 0.50)
+                face_h = int(h * 0.48)
+                face_x = (w - face_w) // 2
+                face_y = int(h * 0.09)
+                padding = 50
             
-            draw.ellipse([face_x-50, face_y-50, face_x+face_w+50, face_y+face_h+50], fill=0)
+            # Рисуем овал с большим padding
+            draw.ellipse([
+                face_x - padding,
+                face_y - padding,
+                face_x + face_w + padding,
+                face_y + face_h + padding
+            ], fill=0)
+            
+            # Градиентный переход
+            for i in range(1, 6):
+                alpha = int(40 * i)
+                draw.ellipse([
+                    face_x - padding - i*4,
+                    face_y - padding - i*4,
+                    face_x + face_w + padding + i*4,
+                    face_y + face_h + padding + i*4
+                ], fill=alpha)
         
+        # 🔑 Сильное размытие
         if blur_radius > 0:
             mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
         # Статистика
-        mask_array = list(mask.getdata())
-        black = sum(1 for p in mask_array if p < 64)
-        total = len(mask_array)
-        logger.info(f"🎭 Mask: {black/total*100:.1f}% black (face area)")
+        mask_data = list(mask.getdata())
+        protected = sum(1 for p in mask_data if p < 100)
+        logger.info(f"🎭 Mask: {protected/len(mask_data)*100:.1f}% protected (face+padding)")
         
         out = io.BytesIO()
         mask.save(out, format="PNG")
@@ -132,7 +213,6 @@ def create_inpainting_mask_precise(
         fb_out = io.BytesIO()
         fallback.save(fb_out, format="PNG")
         return fb_out.getvalue()
-
 
 # ✅ ИСПРАВЛЕНО: параметр называется 'data'
 def _no_none(data: Dict[str, Any]) -> Dict[str, Any]:
