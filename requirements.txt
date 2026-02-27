@@ -4,3 +4,4 @@ aiofiles==23.2.1
 httpx==0.25.2
 deep-translator==1.11.4
 python-dotenv==1.0.0
+Pillow>=10.0.0
