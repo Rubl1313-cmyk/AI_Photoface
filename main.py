@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 🎨 AI PhotoStudio — Main Bot File
-Fixed: no parse_mode to avoid escaping issues, universal send functions
+- Face swapping with gender selection
+- Simple image generation
+- New: swap face onto user's own image (without generation)
+- Improved prompts with realism boosters
+- Universal send functions (no parse_mode)
 """
 
 import asyncio
@@ -106,7 +110,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
         f"👋 Привет! Я {config.BOT_NAME}\n\n"
         "Я могу:\n"
         "🔄 С заменой лица: ты загружаешь фото лица, а я генерирую изображение по твоему описанию и вставляю это лицо.\n"
-        "✨ Просто генерация: я создаю изображение только по текстовому описанию.\n\n"
+        "✨ Просто генерация: я создаю изображение только по текстовому описанию.\n"
+        "🖼️ Замена лица на своё фото: ты загружаешь два своих изображения, и я просто меняю лицо.\n\n"
         "Выбери действие:",
         reply_markup=get_main_menu()
     )
@@ -122,6 +127,8 @@ async def create_photo_start(message: types.Message, state: FSMContext):
         return
 
     await state.set_state(UserStates.waiting_for_face)
+    # Запоминаем, что это режим с генерацией (обычный)
+    await state.update_data(mode="generate")
     await message.answer(
         "Отправь мне фото с лицом человека (можно как фото, так и файл-изображение).\n"
         "Лицо должно быть чётко видно."
@@ -138,6 +145,21 @@ async def simple_generation_start(message: types.Message, state: FSMContext):
     await message.answer(
         "Напиши текстовое описание того, что нужно сгенерировать.\n"
         "Например: красивый закат над горами, цифровое искусство"
+    )
+
+@dp.message(lambda msg: msg.text == "🖼️ Замена лица на своё фото")
+async def swap_own_image_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Ты исчерпал дневной лимит. Завтра лимит обновится.")
+        return
+
+    await state.set_state(UserStates.waiting_for_face)
+    # Запоминаем, что это режим прямой замены (без генерации)
+    await state.update_data(mode="swap_own")
+    await message.answer(
+        "Сначала отправь мне фото с лицом человека, которое нужно вставить (можно как фото, так и файл-изображение).\n"
+        "Лицо должно быть чётко видно."
     )
 
 @dp.message(lambda msg: msg.text == "📊 Моя статистика")
@@ -165,6 +187,10 @@ async def help_cmd(message: types.Message):
         "1. Нажми «✨ Просто генерация»\n"
         "2. Напиши промпт\n"
         "3. Выбери стиль или введи свой\n\n"
+        "🖼️ Замена лица на своё фото:\n"
+        "1. Нажми «🖼️ Замена лица на своё фото»\n"
+        "2. Отправь фото с лицом (источник)\n"
+        "3. Отправь целевое изображение (куда вставить лицо)\n\n"
         f"Дневной лимит: {config.DAILY_LIMIT} генераций"
     )
 
@@ -192,11 +218,22 @@ async def handle_face_photo(message: types.Message, state: FSMContext):
     file = await bot.get_file(photo.file_id)
     image_bytes = await bot.download_file(file.file_path)
     await state.update_data(face_image=image_bytes.read())
-    await state.set_state(UserStates.waiting_for_gender)
-    await message.answer(
-        "✅ Фото лица получено. Теперь укажи пол человека на фото:",
-        reply_markup=get_gender_keyboard()
-    )
+
+    data = await state.get_data()
+    mode = data.get("mode")
+
+    if mode == "swap_own":
+        await state.set_state(UserStates.waiting_for_target_image)
+        await message.answer(
+            "✅ Фото лица получено. Теперь отправь мне целевое изображение (куда нужно вставить лицо).\n"
+            "Это может быть фото человека, пейзаж или любая картинка."
+        )
+    else:
+        await state.set_state(UserStates.waiting_for_gender)
+        await message.answer(
+            "✅ Фото лица получено. Теперь укажи пол человека на фото:",
+            reply_markup=get_gender_keyboard()
+        )
 
 @dp.message(UserStates.waiting_for_face, F.document)
 async def handle_face_document(message: types.Message, state: FSMContext):
@@ -204,11 +241,21 @@ async def handle_face_document(message: types.Message, state: FSMContext):
         file = await bot.get_file(message.document.file_id)
         image_bytes = await bot.download_file(file.file_path)
         await state.update_data(face_image=image_bytes.read())
-        await state.set_state(UserStates.waiting_for_gender)
-        await message.answer(
-            "✅ Изображение получено. Теперь укажи пол человека на фото:",
-            reply_markup=get_gender_keyboard()
-        )
+
+        data = await state.get_data()
+        mode = data.get("mode")
+
+        if mode == "swap_own":
+            await state.set_state(UserStates.waiting_for_target_image)
+            await message.answer(
+                "✅ Фото лица получено. Теперь отправь мне целевое изображение (куда нужно вставить лицо)."
+            )
+        else:
+            await state.set_state(UserStates.waiting_for_gender)
+            await message.answer(
+                "✅ Фото лица получено. Теперь укажи пол человека на фото:",
+                reply_markup=get_gender_keyboard()
+            )
     else:
         await message.answer("Пожалуйста, отправь изображение (фото или документ с картинкой).")
 
@@ -230,7 +277,7 @@ async def process_gender(callback: types.CallbackQuery, state: FSMContext):
     )
 
 # ------------------------------------------------------------
-# Prompt handling (with face)
+# Prompt handling (with face, generate mode)
 # ------------------------------------------------------------
 @dp.message(UserStates.waiting_for_prompt)
 async def handle_prompt(message: types.Message, state: FSMContext):
@@ -242,9 +289,11 @@ async def handle_prompt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     gender = data.get("gender")
     gender_word = "мужчина" if gender == "male" else "женщина"
-    # Prepend gender if not already present
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
+
+    # Для режима с заменой лица добавляем требование, чтобы лицо было видно чётко
+    prompt = prompt + ", face clearly visible, no mask, no occlusions, front view"
 
     await state.update_data(prompt=prompt)
     await state.set_state(UserStates.choosing_style)
@@ -270,6 +319,70 @@ async def handle_simple_prompt(message: types.Message, state: FSMContext):
     )
 
 # ------------------------------------------------------------
+# Target image handlers (for swap_own mode)
+# ------------------------------------------------------------
+@dp.message(UserStates.waiting_for_target_image, F.photo)
+async def handle_target_photo(message: types.Message, state: FSMContext):
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    image_bytes = await bot.download_file(file.file_path)
+    await state.update_data(target_image=image_bytes.read())
+    await perform_swap_only(message, state)
+
+@dp.message(UserStates.waiting_for_target_image, F.document)
+async def handle_target_document(message: types.Message, state: FSMContext):
+    if message.document.mime_type and message.document.mime_type.startswith('image/'):
+        file = await bot.get_file(message.document.file_id)
+        image_bytes = await bot.download_file(file.file_path)
+        await state.update_data(target_image=image_bytes.read())
+        await perform_swap_only(message, state)
+    else:
+        await message.answer("Пожалуйста, отправь изображение (фото или документ с картинкой).")
+
+@dp.message(UserStates.waiting_for_target_image)
+async def handle_target_invalid(message: types.Message):
+    await message.answer("Пожалуйста, отправь фотографию или файл с изображением.")
+
+async def perform_swap_only(event: types.Message | types.CallbackQuery, state: FSMContext):
+    """Функция для замены лица без генерации (только своп)."""
+    data = await state.get_data()
+    face_image = data.get("face_image")
+    target_image = data.get("target_image")
+
+    if not face_image or not target_image:
+        await send_message(event, "❌ Ошибка: не хватает данных. Начни заново.")
+        await state.clear()
+        return
+
+    user_id = event.from_user.id
+    if not usage.increment(user_id):
+        await send_message(event, "❌ Дневной лимит исчерпан.")
+        await state.clear()
+        return
+
+    await state.set_state(UserStates.generating)
+    status_msg = await send_message(event, "🔄 Выполняю замену лица...")
+
+    try:
+        result_bytes = await facefusion_client.swap_face(face_image, target_image)
+        caption = "✅ Готово! Лицо заменено."
+
+        if isinstance(status_msg, types.Message):
+            await status_msg.delete()
+
+        await send_photo(event, BufferedInputFile(result_bytes, filename="result.jpg"), caption=caption)
+    except Exception as e:
+        logger.exception("Swap only error")
+        error_text = f"❌ Ошибка: {str(e)}"
+        if isinstance(status_msg, types.Message):
+            await status_msg.edit_text(error_text)
+        else:
+            await send_message(event, error_text)
+    finally:
+        await state.clear()
+        await send_message(event, "Что делаем дальше?", reply_markup=get_main_menu())
+
+# ------------------------------------------------------------
 # Style selection handlers
 # ------------------------------------------------------------
 async def proceed_to_generation(event: types.Message | types.CallbackQuery, state: FSMContext):
@@ -284,10 +397,8 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         await state.clear()
         return
 
-    # Combine prompt and style
     full_prompt = f"{prompt}, {chosen_style}"
 
-    # Check limit
     user_id = event.from_user.id
     if not usage.increment(user_id):
         await send_message(event, "❌ Дневной лимит исчерпан.")
@@ -295,21 +406,17 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         return
 
     await state.set_state(UserStates.generating)
-    # Отправляем статусное сообщение (оно будет удалено позже)
     status_msg = await send_message(event, "⏳ Генерирую изображение через Cloudflare...")
 
     try:
-        # Generate image via Cloudflare (translation happens inside cloudflare.py)
-        image_bytes = await generate_with_cloudflare(full_prompt)
+        image_bytes = await generate_with_cloudflare(full_prompt, style=chosen_style)
         if not image_bytes:
             raise Exception("Cloudflare did not return an image")
 
         if face_image:
-            # Обновляем статус (если статусное сообщение существует)
             if isinstance(status_msg, types.Message):
                 await status_msg.edit_text("🔄 Выполняю замену лица на Hugging Face...")
             else:
-                # Если статусное сообщение не удалось отправить, отправим новое
                 status_msg = await send_message(event, "🔄 Выполняю замену лица на Hugging Face...")
             result_bytes = await facefusion_client.swap_face(face_image, image_bytes)
             caption = f"✅ Готово (с заменой лица)!\nПромпт: {prompt}\nСтиль: {chosen_style}"
@@ -317,20 +424,14 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
             result_bytes = image_bytes
             caption = f"✅ Готово!\nПромпт: {prompt}\nСтиль: {chosen_style}"
 
-        # Удаляем статусное сообщение
         if isinstance(status_msg, types.Message):
-            try:
-                await status_msg.delete()
-            except:
-                pass
+            await status_msg.delete()
 
-        # Отправляем результат
         await send_photo(event, BufferedInputFile(result_bytes, filename="result.jpg"), caption=caption)
 
     except Exception as e:
         logger.exception("Generation error")
         error_text = f"❌ Ошибка: {str(e)}"
-        # Если статусное сообщение существует, обновим его, иначе отправим новое
         if isinstance(status_msg, types.Message):
             await status_msg.edit_text(error_text)
         else:
@@ -342,9 +443,7 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
 
 @dp.callback_query(lambda c: c.data.startswith("style_"))
 async def choose_preset_style(callback: types.CallbackQuery, state: FSMContext):
-    """Handle preset style selection."""
     style_key = callback.data.replace("style_", "")
-    # Map internal keys to readable style names
     style_map = {
         "realistic": "реализм",
         "anime": "аниме",
@@ -365,7 +464,6 @@ async def choose_preset_style(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "custom_style")
 async def custom_style_chosen(callback: types.CallbackQuery, state: FSMContext):
-    """Handle 'custom style' button."""
     await state.set_state(UserStates.waiting_for_custom_style)
     await callback.message.edit_text(
         "✏️ Напиши свой стиль одним-двумя словами.\n"
@@ -374,7 +472,6 @@ async def custom_style_chosen(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.message(UserStates.waiting_for_custom_style)
 async def handle_custom_style(message: types.Message, state: FSMContext):
-    """Receive custom style from user."""
     custom_style = message.text.strip()
     if not custom_style:
         await message.answer("Стиль не может быть пустым. Попробуй ещё раз.")
@@ -389,11 +486,9 @@ async def on_startup(bot: Bot):
     webhook_url = f"{config.WEBHOOK_URL}{config.WEBHOOK_PATH}"
     await bot.set_webhook(webhook_url)
     logger.info(f"Webhook set to {webhook_url}")
-    # Send startup notification in background
     asyncio.create_task(send_startup_notification())
 
 async def on_shutdown(bot: Bot):
-    # Do NOT delete webhook — it persists across restarts
     logger.info("Shutdown complete (webhook kept)")
 
 def main():
