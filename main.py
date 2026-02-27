@@ -23,7 +23,7 @@ from deep_translator import GoogleTranslator
 import config
 from states import UserStates
 from keyboards import get_main_menu, get_gender_keyboard, get_style_keyboard, get_shot_type_keyboard
-from services.cloudflare import generate_with_cloudflare, generate_photoshoot_with_cloudflare
+from services.cloudflare import generate_with_cloudflare, generate_inpainting_photoshoot
 from services.face_fusion_api import FaceFusionClient
 from services.usage import UsageTracker
 
