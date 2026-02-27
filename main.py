@@ -336,7 +336,7 @@ async def handle_prompt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     gender = data.get("gender")
     # Используем "девушка" для обхода NSFW-фильтров
-    gender_word = "мужчина" if gender == "male" else "девушка"
+    gender_word = "мужчина" if gender == "male" else "профессиональное фото девушки 30 лет"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
 
