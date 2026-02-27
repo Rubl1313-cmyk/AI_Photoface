@@ -631,10 +631,12 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
 # ------------------------------------------------------------
 # В main.py — замените ТОЛЬКО эту функцию. Остальное не трогаем!
 
+# В main.py — замените ТОЛЬКО эту функцию. Остальное не трогаем!
+
 async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
     """
     🎨 ИИ ФОТОСЕССИЯ (новая схема):
-    Telegram фото → Render (InsightFace mask) → Cloudflare (inpainting) → Telegram
+    Telegram фото → Render (face detection fallback chain) → Cloudflare (inpainting) → Telegram
     """
     from services.cloudflare import generate_inpainting_photoshoot
     
@@ -682,7 +684,7 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
             height=512,
             strength=0.9,        # высокий: маска защищает лицо
             guidance=9.5,        # строгое следование промпту для фона
-            steps=25,            # стабильность
+            steps=20,            # 🔑 максимум 20 для inpainting модели CF
             negative_prompt=neg_prompt
         )
 
