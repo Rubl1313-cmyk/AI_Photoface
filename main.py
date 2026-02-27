@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from deep_translator import GoogleTranslator
 
 import config
 from states import UserStates
@@ -336,7 +337,7 @@ async def handle_prompt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     gender = data.get("gender")
     # Используем "девушка" для обхода NSFW-фильтров
-    gender_word = "мужчина" if gender == "male" else "профессиональное фото девушки 30 лет"
+    gender_word = "мужчина" if gender == "male" else "девушка"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
 
@@ -364,15 +365,25 @@ async def handle_simple_prompt(message: types.Message, state: FSMContext):
     )
 
 # ------------------------------------------------------------
-# Обработка промпта для фотосессии
+# Обработка промпта для фотосессии (с переводом на английский)
 # ------------------------------------------------------------
 @dp.message(UserStates.waiting_for_prompt_photoshoot)
 async def handle_photoshoot_prompt(message: types.Message, state: FSMContext):
-    prompt = message.text.strip()
-    if not prompt:
+    user_prompt = message.text.strip()
+    if not user_prompt:
         await message.answer("Промпт не может быть пустым. Напиши описание.")
         return
-    await state.update_data(photoshoot_prompt=prompt)
+
+    # Переводим промпт на английский для Stable Diffusion
+    try:
+        translator = GoogleTranslator(source='auto', target='en')
+        en_prompt = await asyncio.get_event_loop().run_in_executor(None, translator.translate, user_prompt)
+        logger.info(f"🔤 Перевод промпта фотосессии: '{user_prompt}' → '{en_prompt}'")
+    except Exception as e:
+        logger.error(f"Ошибка перевода: {e}")
+        en_prompt = user_prompt  # если перевод не удался, оставляем как есть (но модель может хуже понять)
+
+    await state.update_data(photoshoot_prompt=en_prompt)
     await proceed_photoshoot(message, state)
 
 # ------------------------------------------------------------
@@ -605,7 +616,7 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
 async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     source_image = data.get("source_image")
-    prompt = data.get("photoshoot_prompt")
+    prompt = data.get("photoshoot_prompt")  # уже переведённый на английский
 
     if not source_image or not prompt:
         await send_message(event, "❌ Ошибка: не хватает данных. Начни заново.")
@@ -622,8 +633,9 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
     status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
 
     try:
-        width, height = 1024, 1024  # можно сделать настраиваемым позже
-        strength = 0.8  # сила изменений (0.0 - копия, 1.0 - максимум)
+        # Можно задать размеры и силу изменений (позже можно добавить выбор пользователем)
+        width, height = 512, 512  # Уменьшаем размер для экономии и совместимости
+        strength = 0.8
         negative_prompt = "bad quality, blurry, distorted face, extra limbs"
 
         image_bytes = await generate_photoshoot_with_cloudflare(
