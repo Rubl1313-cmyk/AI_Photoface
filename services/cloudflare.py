@@ -2,13 +2,13 @@
 import httpx
 import base64
 import logging
-import asyncio
 import json
 import os
 from typing import Optional, Dict, Any
 from PIL import Image, ImageDraw, ImageFilter
 import io
 import numpy as np
+import cv2
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +24,16 @@ def _compress_image(
     max_kb: int = MAX_IMAGE_KB,
     quality: int = JPEG_QUALITY
 ) -> bytes:
-    """Сжимает изображение для отправки в Cloudflare"""
+    """Сжимает изображение"""
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
         w, h = img.size
         if w > max_dimension or h > max_dimension:
             ratio = min(max_dimension / w, max_dimension / h)
-            img = img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
-            logger.info(f"📐 Resized: {w}x{h} → {img.size[0]}x{img.size[1]}")
+            new_size = (int(w * ratio), int(h * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info(f"📐 Resized: {w}x{h} → {new_size[0]}x{new_size[1]}")
         
         output = io.BytesIO()
         for q in range(quality, 70, -5):
@@ -49,17 +50,16 @@ def _compress_image(
         return image_bytes
 
 
-def detect_face_mediapipe_precise(image_bytes: bytes) -> Optional[Dict[str, int]]:
+def detect_face_mediapipe(image_bytes: bytes) -> Optional[Dict[str, int]]:
     """
-    🔥 Детекция лица через MediaPipe 0.10.13+
-    Возвращает bbox {x, y, width, height} или None
+    🔥 Детекция лица через MediaPipe 0.10.32
+    ПРАВИЛЬНЫЙ импорт и использование
     """
     try:
-        # 🔑 ПРАВИЛЬНЫЙ импорт для mediapipe>=0.10.13
+        # 🔑 ПРАВИЛЬНЫЙ импорт для MediaPipe
         import mediapipe as mp
-        import cv2
         
-        # Конвертируем bytes → numpy array
+        # Конвертируем bytes → numpy → OpenCV
         img_array = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
         
@@ -70,145 +70,127 @@ def detect_face_mediapipe_precise(image_bytes: bytes) -> Optional[Dict[str, int]
         h, w = img.shape[:2]
         logger.info(f"📐 Image loaded: {w}x{h}px")
         
-        # 🔑 Используем solutions API (всё ещё работает в 0.10.x)
+        # 🔑 ПРАВИЛЬНОЕ использование mp.solutions.face_detection
         mp_face_detection = mp.solutions.face_detection
         
+        # 🔑 model_selection=1 для full-range (до 5 метров)
         with mp_face_detection.FaceDetection(
-            min_detection_confidence=0.5,
-            model_selection=1  # 1=full-range для общих фото
+            model_selection=1,  # 0=short-range (2m), 1=full-range (5m)
+            min_detection_confidence=0.5
         ) as face_detection:
-            # 🔑 BGR → RGB (MediaPipe требует RGB)
+            # 🔑 BGR → RGB (MediaPipe требует RGB!)
             rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             results = face_detection.process(rgb_image)
             
             if results.detections:
-                # Выбираем самое крупное лицо
-                faces = []
-                for detection in results.detections:
-                    bbox = detection.location_data.relative_bounding_box
-                    score = detection.score[0] if detection.score else 0
-                    
-                    # Абсолютные координаты
-                    x = max(0, int(bbox.xmin * w))
-                    y = max(0, int(bbox.ymin * h))
-                    width = min(w - x, int(bbox.width * w))
-                    height = min(h - y, int(bbox.height * h))
-                    area = width * height
-                    
-                    faces.append({
-                        "x": x, "y": y, "width": width, "height": height,
-                        "score": score, "area": area
-                    })
-                    logger.debug(f"  Face: {width}x{height}px, score={score:.2f}")
+                # Берём первое (самое крупное) лицо
+                detection = results.detections[0]
+                bbox = detection.location_data.relative_bounding_box
                 
-                # 🔑 Берём самое крупное по площади
-                best = max(faces, key=lambda f: f["area"])
-                logger.info(f"✅ Face detected: {best['width']}x{best['height']}px, score={best['score']:.2f}")
+                # Относительные → абсолютные координаты
+                x = max(0, int(bbox.xmin * w))
+                y = max(0, int(bbox.ymin * h))
+                width = min(w - x, int(bbox.width * w))
+                height = min(h - y, int(bbox.height * h))
+                
+                score = detection.score[0] if detection.score else 0
+                
+                logger.info(f"✅ Face detected: {width}x{height}px, score={score:.2f}")
                 
                 return {
-                    "x": best["x"], "y": best["y"],
-                    "width": best["width"], "height": best["height"],
-                    "score": best["score"]
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                    "score": score
                 }
             else:
-                logger.warning("⚠️ MediaPipe: no faces detected")
+                logger.warning("⚠️ No faces detected")
                 return None
                 
-    except ImportError as e:
-        logger.error(f"❌ MediaPipe import error: {e}")
-        return None
     except AttributeError as e:
-        # 🔑 Обработка ошибки 'module has no attribute solutions'
-        logger.error(f"❌ MediaPipe API changed: {e}")
-        logger.error("💡 Try: pip install 'mediapipe<0.11' or use fallback heuristic")
+        logger.error(f"❌ MediaPipe API error: {e}")
+        logger.error("💡 Check: pip install mediapipe==0.10.32")
+        return None
+    except ImportError as e:
+        logger.error(f"❌ MediaPipe not installed: {e}")
+        logger.error("💡 Install: pip install mediapipe==0.10.32 opencv-python-headless numpy")
         return None
     except Exception as e:
-        logger.error(f"❌ MediaPipe runtime error: {type(e).__name__}: {e}")
+        logger.error(f"❌ MediaPipe error: {type(e).__name__}: {e}")
         return None
 
-def create_inpainting_mask_precise(
+
+def create_inpainting_mask(
     image_bytes: bytes,
     bbox: Optional[Dict[str, int]],
-    face_padding_percent: float = 0.40,
+    padding_percent: float = 0.40,
     blur_radius: int = 18
 ) -> bytes:
     """
-    🔥 Надёжная маска: работает даже без детекции лица
+    🔥 Создаёт маску для inpainting
+    ⚫ Чёрный (0) = сохранить (лицо)
+    ⚪ Белый (255) = изменить (фон)
     """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         w, h = img.size
         
-        mask = Image.new("L", (w, h), 255)  # Белый = менять фон
+        mask = Image.new("L", (w, h), 255)
         draw = ImageDraw.Draw(mask)
         
-        if bbox and bbox.get("width", 0) > 25 and bbox.get("height", 0) > 25:
-            # 🔑 Использовать детектированное лицо
+        if bbox and bbox.get("width", 0) > 20:
+            # Используем детектированное лицо
             cx = bbox["x"] + bbox["width"] // 2
             cy = bbox["y"] + bbox["height"] // 2
-            padding_x = int(bbox["width"] * face_padding_percent)
-            padding_y = int(bbox["height"] * face_padding_percent)
+            padding_x = int(bbox["width"] * padding_percent)
+            padding_y = int(bbox["height"] * padding_percent)
             rw = bbox["width"] // 2 + padding_x
             rh = bbox["height"] // 2 + padding_y
             
+            # Чёрный овал (сохранить)
             draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
             
-            # Плавный градиентный переход
-            for i in range(1, 5):
-                alpha = int(50 * i)
-                draw.ellipse([cx-rw-i*6, cy-rh-i*6, cx+rw+i*6, cy+rh+i*6], fill=alpha)
+            # Градиент для плавного перехода
+            for i in range(1, 6):
+                gray = int(50 * i)
+                draw.ellipse([cx-rw-i*6, cy-rh-i*6, cx+rw+i*6, cy+rh+i*6], fill=gray)
                 
         else:
-            # 🔥 УЛУЧШЕННАЯ эвристика для портретов
-            # Адаптируется под соотношение сторон изображения
-            
-            if h > w * 1.3:  # Вертикальное (портрет)
-                face_w = int(w * 0.58)   # Лицо занимает ~58% ширины
-                face_h = int(h * 0.45)   # и ~45% высоты
-                face_x = (w - face_w) // 2
-                face_y = int(h * 0.05)   # 5% от верха
-                padding = 60
-                
-            elif w > h * 1.3:  # Горизонтальное
-                face_w = int(w * 0.38)
-                face_h = int(h * 0.68)
-                face_x = (w - face_w) // 2
-                face_y = int(h * 0.10)
-                padding = 50
-                
-            else:  # Квадратное
-                face_w = int(w * 0.52)
+            # 🔥 FALLBACK: большая эвристическая маска
+            if h > w:  # Портрет
+                face_w = int(w * 0.65)
                 face_h = int(h * 0.50)
                 face_x = (w - face_w) // 2
+                face_y = int(h * 0.05)
+            else:  # Квадрат/горизонталь
+                face_w = int(w * 0.55)
+                face_h = int(h * 0.65)
+                face_x = (w - face_w) // 2
                 face_y = int(h * 0.08)
-                padding = 55
             
-            # Рисуем основной овал (чёрный = сохранить)
-            draw.ellipse([
-                face_x - padding,
-                face_y - padding,
-                face_x + face_w + padding,
-                face_y + face_h + padding
-            ], fill=0)
+            draw.ellipse([face_x-55, face_y-55, face_x+face_w+55, face_y+face_h+55], fill=0)
             
-            # Градиентные слои для плавного перехода
-            for i in range(1, 7):
-                alpha = int(35 * i)
-                draw.ellipse([
-                    face_x - padding - i*5,
-                    face_y - padding - i*5,
-                    face_x + face_w + padding + i*5,
-                    face_y + face_h + padding + i*5
-                ], fill=alpha)
+            for i in range(1, 6):
+                gray = int(50 * i)
+                draw.ellipse([face_x-55-i*6, face_y-55-i*6, face_x+face_w+55+i*6, face_y+face_h+55+i*6], fill=gray)
         
-        # 🔑 Сильное размытие для бесшовного перехода
+        # Размытие
         if blur_radius > 0:
             mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # Статистика маски
-        mask_data = list(mask.getdata())
-        protected = sum(1 for p in mask_data if p < 100)
-        logger.info(f"🎭 Mask: {protected/len(mask_data)*100:.1f}% protected area")
+        # Проверка
+        data = list(mask.getdata())
+        protected = sum(1 for p in data if p < 128)
+        percent = (protected / len(data)) * 100
+        logger.info(f"🎭 Mask: {percent:.1f}% protected")
+        
+        if percent < 20:
+            logger.error("⚠️ Mask < 20%! Creating emergency mask...")
+            mask = Image.new("L", (w, h), 255)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse([w*0.15, h*0.05, w*0.85, h*0.60], fill=0)
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=25))
         
         out = io.BytesIO()
         mask.save(out, format="PNG")
@@ -221,14 +203,14 @@ def create_inpainting_mask_precise(
         fallback.save(fb_out, format="PNG")
         return fb_out.getvalue()
 
-# ✅ ИСПРАВЛЕНО: параметр называется 'data'
-def _no_none(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Удаляет None значения из dict"""
+
+def _no_none( Dict[str, Any]) -> Dict[str, Any]:
+    """Удаляет None значения"""
     return {k: v for k, v in data.items() if v is not None}
 
 
 # =============================================================================
-# TEXT-TO-IMAGE (FLUX) — без изменений
+# TEXT-TO-IMAGE (FLUX)
 # =============================================================================
 async def generate_with_cloudflare(
     prompt: str,
@@ -268,19 +250,18 @@ async def generate_inpainting_photoshoot(
     strength: float = 0.9,
     guidance: float = 9.5,
     steps: int = 20,
-    negative_prompt: str = "",
-    face_padding: float = 0.35
+    negative_prompt: str = ""
 ) -> Optional[bytes]:
     """Inpainting фотосессия с MediaPipe детекцией"""
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
-    # 1. Сжимаем изображение
+    # 1. Сжимаем
     compressed = _compress_image(source_image_bytes)
     image_b64 = base64.b64encode(compressed).decode()
     
-    # 2. Детекция лица через MediaPipe
-    logger.info("🔍 Detecting face with MediaPipe...")
-    bbox = detect_face_mediapipe_precise(compressed)
+    # 2. 🔥 Детекция лица через MediaPipe
+    logger.info("🔍 Detecting face with MediaPipe 0.10.32...")
+    bbox = detect_face_mediapipe(compressed)
     
     if bbox:
         logger.info(f"✅ Face: {bbox['width']}x{bbox['height']}px, score={bbox['score']:.2f}")
@@ -288,10 +269,10 @@ async def generate_inpainting_photoshoot(
         logger.warning("⚠️ Face not detected, using heuristic mask")
     
     # 3. Создаём маску
-    mask_bytes = create_inpainting_mask_precise(compressed, bbox, face_padding_percent=face_padding)
+    mask_bytes = create_inpainting_mask(compressed, bbox)
     mask_b64 = base64.b64encode(mask_bytes).decode()
     
-    # 4. Формируем payload
+    # 4. Payload
     safe_steps = min(20, max(10, int(steps)))
     
     payload = _no_none({
@@ -306,9 +287,9 @@ async def generate_inpainting_photoshoot(
         "negative_prompt": negative_prompt.strip() if negative_prompt else None,
     })
     
-    logger.info(f"🚀 Inpainting request: {len(json.dumps(payload))/1024:.1f}KB")
+    logger.info(f"🚀 Inpainting: {len(compressed)}B img, {len(mask_bytes)}B mask")
     
-    # 5. Отправляем в Cloudflare
+    # 5. Отправляем
     async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
