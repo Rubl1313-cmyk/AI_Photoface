@@ -633,16 +633,19 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
     status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
 
     try:
-        # Параметры для img2img (без width/height)
+        # Параметры для img2img (можно настраивать)
+        width, height = 512, 512
         strength = 0.5
         negative_prompt = "bad quality, blurry, distorted face, extra limbs"
 
         image_bytes = await generate_photoshoot_with_cloudflare(
             prompt=prompt,
             source_image_bytes=source_image,
+            width=width,
+            height=height,
             strength=strength,
             negative_prompt=negative_prompt
-            # width и height убраны!
+            # остальные параметры (guidance_scale, num_steps, max_image_size, image_quality) будут использованы по умолчанию
         )
 
         if not image_bytes:
