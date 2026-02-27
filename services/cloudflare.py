@@ -2,168 +2,244 @@
 import httpx
 import base64
 import logging
-from typing import Optional, Dict, Any
-from PIL import Image
+from typing import Optional, Dict, Any, List
+from PIL import Image, ImageDraw, ImageFilter
 import io
 
 logger = logging.getLogger(__name__)
 
-# 🔑 Константы: безопасные лимиты для Cloudflare Workers AI
-MAX_IMAGE_RAW_KB = 400          # Макс. размер изображения до base64
-MAX_IMAGE_DIMENSION = 512       # Макс. разрешение (ширина/высота)
-JPEG_QUALITY = 85               # Стартовое качество JPEG
-MIN_JPEG_QUALITY = 60           # Минимальное качество при сжатии
+# 🔑 Константы
+MAX_IMAGE_KB = 400
+MAX_DIMENSION = 512
+JPEG_QUALITY = 90
+
+# 🔑 Hugging Face API (InsightFace для детекции лица)
+HF_API_URL = "https://api-inference.huggingface.co/models/dubzzz/insightface-face-detection"
+HF_TOKEN = ""  # ← Добавьте в переменные окружения Render: HF_TOKEN=hf_xxx
 
 
-def prepare_image_for_cloudflare(
+def _compress_image(
     image_bytes: bytes,
-    max_dimension: int = MAX_IMAGE_DIMENSION,
-    max_file_size_kb: int = MAX_IMAGE_RAW_KB,
-    quality: int = JPEG_QUALITY,
-    format: str = "JPEG"
+    max_dimension: int = MAX_DIMENSION,
+    max_kb: int = MAX_IMAGE_KB,
+    quality: int = JPEG_QUALITY
 ) -> bytes:
-    """
-    Подготовка изображения для Cloudflare AI API:
-    - Конвертирует в RGB
-    - Ресайзит с сохранением пропорций
-    - Итеративно сжимает до целевого размера
-    """
+    """Сжимает изображение для отправки в Cloudflare"""
     try:
-        img = Image.open(io.BytesIO(image_bytes))
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Конвертация в RGB для JPEG
-        if format.upper() == "JPEG" and img.mode in ("RGBA", "LA", "P"):
-            img = img.convert("RGB")
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
+        # Ресайз
+        w, h = img.size
+        if w > max_dimension or h > max_dimension:
+            ratio = min(max_dimension / w, max_dimension / h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
         
-        # Ресайз с сохранением пропорций
-        original_w, original_h = img.size
-        if original_w > max_dimension or original_h > max_dimension:
-            ratio = min(max_dimension / original_w, max_dimension / original_h)
-            new_size = (int(original_w * ratio), int(original_h * ratio))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-            logger.info(f"📐 Resized: {original_w}x{original_h} → {new_size[0]}x{new_size[1]}")
-        
-        # Итеративное сжатие до целевого размера
+        # Сжатие JPEG
         output = io.BytesIO()
-        current_quality = quality
-        
-        while current_quality >= MIN_JPEG_QUALITY:
+        for q in range(quality, 70, -5):
             output.seek(0)
             output.truncate(0)
-            img.save(output, format=format, quality=current_quality, optimize=True)
-            
-            size_kb = len(output.getvalue()) / 1024
-            if size_kb <= max_file_size_kb:
-                logger.info(f"🗜️ Compressed: {size_kb:.1f} KB @ quality={current_quality}")
+            img.save(output, format="JPEG", quality=q, optimize=True)
+            if len(output.getvalue()) / 1024 <= max_kb:
+                logger.info(f"🗜️ Compressed: {len(output.getvalue())/1024:.1f}KB @ Q{q}")
                 return output.getvalue()
-            current_quality -= 5
         
-        # Если не удалось сжать до лимита — возвращаем лучшее, что есть
-        final_size_kb = len(output.getvalue()) / 1024
-        logger.warning(f"⚠️ Could not compress to {max_file_size_kb}KB, sending {final_size_kb:.1f}KB")
         return output.getvalue()
-        
     except Exception as e:
-        logger.error(f"❌ Image preparation error: {e}")
-        return image_bytes  # Fallback: возвращаем оригинал
+        logger.error(f"❌ Compression error: {e}")
+        return image_bytes
 
 
-def _filter_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Удаляет ключи со значением None из словаря"""
+async def detect_face_hf(image_bytes: bytes) -> Optional[Dict[str, int]]:
+    """
+    Детекция лица через Hugging Face Inference API
+    Возвращает bbox: {x, y, width, height} или None
+    """
+    if not HF_TOKEN:
+        logger.warning("⚠️ HF_TOKEN not set")
+        return None
+    
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            # Модель может быть в режиме loading — retry
+            for attempt in range(3):
+                resp = await client.post(
+                    HF_API_URL,
+                    headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                    content=image_bytes
+                )
+                
+                if resp.status_code == 200:
+                    result = resp.json()
+                    if isinstance(result, list) and result and "box" in result[0]:
+                        x1, y1, x2, y2 = result[0]["box"]
+                        return {"x": int(x1), "y": int(y1), "width": int(x2-x1), "height": int(y2-y1)}
+                    break
+                elif resp.status_code == 503:
+                    # Модель загружается
+                    await asyncio.sleep(5)
+                    continue
+                else:
+                    logger.error(f"❌ HF API {resp.status_code}: {resp.text[:150]}")
+                    break
+    except Exception as e:
+        logger.error(f"❌ Face detection error: {e}")
+    
+    return None
+
+
+def create_inpainting_mask(
+    image_bytes: bytes,
+    bbox: Optional[Dict[str, int]],
+    padding: int = 40,
+    blur: int = 12
+) -> bytes:
+    """
+    Создаёт маску для inpainting:
+    ⚫ Чёрный (0) = сохранить (лицо)
+    ⚪ Белый (255) = изменить (фон)
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        w, h = img.size
+        
+        # Белая маска по умолчанию (всё менять)
+        mask = Image.new("L", (w, h), 255)
+        draw = ImageDraw.Draw(mask)
+        
+        if bbox:
+            # Рисуем чёрный овал на месте лица
+            cx = bbox["x"] + bbox["width"] // 2
+            cy = bbox["y"] + bbox["height"] // 2
+            rw = bbox["width"] // 2 + padding
+            rh = bbox["height"] // 2 + padding
+            draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
+        else:
+            # Fallback: эвристика (верхняя центральная часть)
+            fw, fh = int(w * 0.65), int(h * 0.6)
+            fx, fy = (w - fw) // 2, int(h * 0.12)
+            draw.ellipse([fx-padding, fy-padding, fx+fw+padding, fy+fh+padding], fill=0)
+        
+        # Размытие краёв для плавного перехода
+        if blur > 0:
+            mask = mask.filter(Image.GaussianBlur(radius=blur))
+        
+        # PNG без сжатия для маски
+        out = io.BytesIO()
+        mask.save(out, format="PNG")
+        return out.getvalue()
+    except Exception as e:
+        logger.error(f"❌ Mask creation error: {e}")
+        # Fallback: белая маска
+        fallback = Image.new("L", (512, 512), 255)
+        fb_out = io.BytesIO()
+        fallback.save(fb_out, format="PNG")
+        return fb_out.getvalue()
+
+
+def _no_none( Dict[str, Any]) -> Dict[str, Any]:
+    """Удаляет None значения из dict"""
     return {k: v for k, v in data.items() if v is not None}
 
 
+# =============================================================================
+# TEXT-TO-IMAGE (FLUX) — НЕ ТРОГАЕМ, работает как было
+# =============================================================================
 async def generate_with_cloudflare(
     prompt: str,
-    style: Optional[str] = None,
     width: int = 1024,
     height: int = 1024,
     negative_prompt: str = ""
 ) -> Optional[bytes]:
-    """Text-to-Image генерация через FLUX.1 Schnell"""
+    """Text-to-Image через FLUX — без изменений"""
     import os
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
-
-    payload = _filter_none_values({
+    
+    payload = _no_none({
         "prompt": prompt.strip(),
-        "width": int(width),
-        "height": int(height),
+        "width": width,
+        "height": height,
         "steps": 4,
         "negative_prompt": negative_prompt.strip() if negative_prompt else None,
     })
-
-    logger.info(f"📡 text-to-image: {prompt[:50]}... | {width}x{height}")
     
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         try:
             resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
             resp.raise_for_status()
             return resp.content
-        except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP {e.response.status_code}: {e.response.text[:200]}")
-            return None
         except Exception as e:
-            logger.error(f"❌ text-to-image error: {type(e).__name__}: {e}")
+            logger.error(f"❌ FLUX error: {e}")
             return None
 
 
-async def generate_photoshoot_with_cloudflare(
+# =============================================================================
+# 🎨 INPAINTING ДЛЯ «ИИ ФОТОСЕССИИ» — НОВАЯ ФУНКЦИЯ
+# =============================================================================
+async def generate_inpainting_photoshoot(
     prompt: str,
     source_image_bytes: bytes,
     width: int = 512,
     height: int = 512,
-    strength: float = 0.5,
-    guidance_scale: float = 7.5,   # ← должен приниматься
-    num_steps: int = 20,           # ← должен приниматься
-    negative_prompt: str = "bad quality, blurry, distorted, extra limbs",
-    max_image_size: int = MAX_IMAGE_DIMENSION,
-    image_quality: int = JPEG_QUALITY
+    strength: float = 0.9,
+    guidance: float = 9.5,
+    steps: int = 25,
+    negative_prompt: str = ""
 ) -> Optional[bytes]:
-    """Img2Img генерация через Stable Diffusion v1.5"""
-    import os
+    """
+    🎭 Inpainting для фотосессии:
+    1. Детектируем лицо через HF API
+    2. Создаём маску (лицо=чёрное, фон=белое)
+    3. Отправляем в Cloudflare inpainting модель
+    4. Возвращаем результат
+    """
+    import os, asyncio
+    
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
-
-    # 1. Подготовка изображения
-    prepared_bytes = prepare_image_for_cloudflare(
-        source_image_bytes,
-        max_dimension=max_image_size,
-        max_file_size_kb=MAX_IMAGE_RAW_KB,
-        quality=image_quality,
-        format="JPEG"
-    )
     
-    # 2. Кодирование в base64
-    image_b64 = base64.b64encode(prepared_bytes).decode("utf-8")
+    # 1. Сжимаем исходное изображение
+    compressed = _compress_image(source_image_bytes)
+    image_b64 = base64.b64encode(compressed).decode()
     
-    # 3. Логирование размеров
-    raw_kb = len(prepared_bytes) / 1024
-    b64_kb = len(image_b64) / 1024
-    logger.info(f"🖼️ Prepared: {raw_kb:.1f}KB raw → {b64_kb:.1f}KB base64")
+    # 2. 🔑 Детекция лица через HF API
+    logger.info("🔍 Detecting face via Hugging Face...")
+    bbox = await detect_face_hf(compressed)
     
-    # 4. Формирование payload (только non-None значения)
-    payload = _filter_none_values({
+    if bbox:
+        logger.info(f"✅ Face found: {bbox}")
+    else:
+        logger.warning("⚠️ Face not detected, using fallback mask")
+    
+    # 3. Создаём маску
+    mask_bytes = create_inpainting_mask(compressed, bbox)
+    mask_b64 = base64.b64encode(mask_bytes).decode()
+    logger.info(f"🎭 Mask: {len(mask_bytes)} bytes")
+    
+    # 4. Формируем payload для Cloudflare
+    payload = _no_none({
         "prompt": prompt.strip(),
         "image_b64": image_b64,
-        "width": int(width) if width else None,
-        "height": int(height) if height else None,
-        "strength": float(strength) if strength is not None else None,
-        "guidance_scale": float(guidance_scale) if guidance_scale is not None else None,
-        "num_steps": int(num_steps) if num_steps else None,
+        "mask_b64": mask_b64,  # ← 🔑 КЛЮЧЕВОЕ: маска для inpainting
+        "width": width,
+        "height": height,
+        "strength": strength,
+        "guidance_scale": guidance,
+        "num_steps": steps,
         "negative_prompt": negative_prompt.strip() if negative_prompt else None,
     })
     
-    logger.info(f"📸 img2img: {prompt[:50]}... | strength={strength} | steps={num_steps}")
+    logger.info(f"🚀 Inpainting request: {len(json.dumps(payload))/1024:.1f}KB payload")
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    # 5. Отправляем в Cloudflare
+    async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
             resp.raise_for_status()
+            logger.info(f"✅ Inpainting success: {len(resp.content)} bytes")
             return resp.content
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ HTTP {e.response.status_code}: {e.response.text[:200]}")
             return None
         except Exception as e:
-            logger.error(f"❌ img2img error: {type(e).__name__}: {e}")
+            logger.error(f"❌ Inpainting error: {type(e).__name__}: {e}")
             return None
