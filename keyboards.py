@@ -8,7 +8,7 @@ def get_main_menu() -> ReplyKeyboardMarkup:
         KeyboardButton(text="✨ Просто генерация")
     )
     builder.row(
-        KeyboardButton(text="🖼️ Замена лица на своем изображении"),  # новая кнопка
+        KeyboardButton(text="🖼️ Замена лица на своём изображении"),  # новая кнопка
         KeyboardButton(text="📊 Моя статистика")
     )
     builder.row(
