@@ -16,7 +16,7 @@ MAX_DIMENSION = 512
 JPEG_QUALITY = 90
 
 # 🔑 Hugging Face API (InsightFace для детекции лица)
-HF_API_URL = "https://api-inference.huggingface.co/models/dubzzz/insightface-face-detection"
+HF_API_URL = "https://api-inference.huggingface.co/models/amd/retinaface"
 HF_TOKEN = ""  # ← Добавьте в переменные окружения Render: HF_TOKEN=hf_xxx
 
 
