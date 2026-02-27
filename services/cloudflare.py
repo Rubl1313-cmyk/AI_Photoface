@@ -38,7 +38,7 @@ def prepare_image_for_cloudflare(
         return image_bytes
 
 # ------------------------------------------------------------
-# Генерация изображения по тексту (text-to-image)
+# Генерация изображения по тексту (text-to-image) — для FLUX
 # ------------------------------------------------------------
 async def generate_with_cloudflare(
     prompt: str,
@@ -70,22 +70,24 @@ async def generate_with_cloudflare(
             return None
 
 # ------------------------------------------------------------
-# Генерация изображения на основе фото (img2img) – с ресайзом и сжатием
+# Генерация изображения на основе фото (img2img) — с ресайзом и сжатием
 # ------------------------------------------------------------
 async def generate_photoshoot_with_cloudflare(
     prompt: str,
     source_image_bytes: bytes,
+    width: int = 512,
+    height: int = 512,
     strength: float = 0.5,
     guidance_scale: float = 7.5,
     num_steps: int = 20,
     negative_prompt: str = "bad quality, blurry, distorted, extra limbs",
-    max_image_size: int = 1024,
-    image_quality: int = 85
+    max_image_size: int = 1024,      # максимальный размер для ресайза (большая сторона)
+    image_quality: int = 85           # качество JPEG (0-100)
 ) -> Optional[bytes]:
     import os
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev")
 
-    # Подготавливаем изображение: ресайз + сжатие
+    # 1. Подготавливаем изображение: ресайз + сжатие
     prepared_bytes = prepare_image_for_cloudflare(
         source_image_bytes,
         max_size=max_image_size,
@@ -93,22 +95,23 @@ async def generate_photoshoot_with_cloudflare(
         format="JPEG"  # можно "PNG", но JPEG даёт меньший размер
     )
     
-    # Кодируем в base64
+    # 2. Кодируем в base64
     image_b64 = base64.b64encode(prepared_bytes).decode('utf-8')
     
-    # Формируем payload (Worker сам переименует поля при необходимости)
+    # 3. Формируем payload (включая width/height, они будут переданы в Worker)
     payload = {
         "prompt": prompt,
         "image_b64": image_b64,
+        "width": width,
+        "height": height,
         "strength": strength,
         "guidance_scale": guidance_scale,
         "num_steps": num_steps,
         "negative_prompt": negative_prompt
-        # width/height не передаём – они не нужны для img2img
     }
     headers = {"Content-Type": "application/json"}
 
-    logger.info(f"📸 img2img: {prompt[:50]}..., strength={strength}, image size after prep: {len(prepared_bytes)} bytes")
+    logger.info(f"📸 img2img: {prompt[:50]}..., size={width}x{height}, strength={strength}, prepared image size: {len(prepared_bytes)} bytes")
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(url, json=payload, headers=headers, timeout=120)
