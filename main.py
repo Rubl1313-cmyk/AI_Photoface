@@ -32,6 +32,22 @@ from services.usage import UsageTracker
 # ------------------------------------------------------------
 SWAP_OWN_BUTTON = "🖼️ Замена лица на своём изображении"
 PHOTOSHOOT_BUTTON = "✨ ИИ фотосессия"
+# 🔥 КОНСТАНТЫ ДЛЯ КАЧЕСТВЕННОЙ ФОТОСЕССИИ
+NEGATIVE_PROMPT = (
+    "deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy, "
+    "extra limb, missing limb, floating limbs, mutated hands, malformed hands, "
+    "blurry, muddy, hazy, pixelated, low resolution, jpeg artifacts, "
+    "ugly, disgusting, poorly drawn face, mutation, mutated, extra limb, "
+    "ugly, poorly drawn hands, missing limb, blurry, floating limbs, "
+    "disconnected limbs, malformed hands, blur, (mutated …s, signature, "
+    "watermark, username, blurry, artist name, psychedelic, abstract, surreal, "
+    "cartoon, anime, 3d render, sketch, painting, drawing, illustration"
+)
+# Магические токены качества (добавляются к любому промпту)
+QUALITY_TOKENS = (
+    ", professional photography, studio lighting, sharp focus, 8k uhd, dslr, "
+    "soft lighting, high quality, film grain, detailed face, natural skin texture, "
+    "realistic eyes, symmetrical face, cinematic composition, depth of field, bokeh"
 
 # ------------------------------------------------------------
 # Настройка логирования
@@ -633,19 +649,31 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
     status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
 
     try:
-        # Параметры для img2img (можно настраивать)
+        # 🔑 ПАРАМЕТРЫ ДЛЯ НОРМАЛЬНОГО ЛИЦА (не бомжа!)
         width, height = 512, 512
-        strength = 0.3
-        negative_prompt = "bad quality, blurry, distorted face, extra limbs"
+        strength = 0.42              # ← 0.4–0.45 золотая середина
+        guidance_scale = 9.5         # ← выше = строже следует промпту
+        num_steps = 30               # ← больше шагов = меньше шума
+        image_quality = 92           # ← качество JPEG при сжатии
+        max_image_size = 512         # ← размер для ресайза
+
+        # 🔑 Добавляем магические токены качества к промпту пользователя
+        enhanced_prompt = f"{prompt}{QUALITY_TOKENS}"
+        
+        logger.info(f"🎨 Photoshoot prompt: {enhanced_prompt[:100]}...")
+        logger.info(f"📊 Params: strength={strength}, guidance={guidance_scale}, steps={num_steps}")
 
         image_bytes = await generate_photoshoot_with_cloudflare(
-            prompt=prompt,
+            prompt=enhanced_prompt,      # ← используем улучшенный промпт
             source_image_bytes=source_image,
             width=width,
             height=height,
             strength=strength,
-            negative_prompt=negative_prompt
-            # остальные параметры (guidance_scale, num_steps, max_image_size, image_quality) будут использованы по умолчанию
+            guidance_scale=guidance_scale,  # ← явно передаём
+            num_steps=num_steps,            # ← явно передаём
+            negative_prompt=NEGATIVE_PROMPT,  # ← полный negative prompt
+            max_image_size=max_image_size,
+            image_quality=image_quality
         )
 
         if not image_bytes:
