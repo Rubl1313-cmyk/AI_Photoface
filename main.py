@@ -629,10 +629,18 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
 # ------------------------------------------------------------
 # Процесс фотосессии (img2img) – ИСПРАВЛЕННАЯ ВЕРСИЯ
 # ------------------------------------------------------------
+# В main.py — замените ТОЛЬКО эту функцию. Остальное не трогаем!
+
 async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
+    """
+    🎨 ИИ ФОТОСЕССИЯ (новая схема):
+    Telegram фото → Render (InsightFace mask) → Cloudflare (inpainting) → Telegram
+    """
+    from services.cloudflare import generate_inpainting_photoshoot
+    
     data = await state.get_data()
-    source_image = data.get("source_image")
-    prompt = data.get("photoshoot_prompt")  # уже переведённый на английский
+    source_image = data.get("source_image")  # bytes от пользователя
+    prompt = data.get("photoshoot_prompt")   # уже переведённый на английский
 
     if not source_image or not prompt:
         await send_message(event, "❌ Ошибка: не хватает данных. Начни заново.")
@@ -646,49 +654,55 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
         return
 
     await state.set_state(UserStates.generating)
-    status_msg = await send_message(event, "⏳ Генерирую фотосессию через Cloudflare (img2img)...")
+    status_msg = await send_message(event, "🎭 Определяю лицо...")
 
     try:
-        # 🔑 ПАРАМЕТРЫ ДЛЯ НОРМАЛЬНОГО ЛИЦА (не бомжа!)
-        width, height = 512, 512
-        strength = 0.42              # ← 0.4–0.45 золотая середина
-        guidance_scale = 9.5         # ← выше = строже следует промпту
-        num_steps = 30               # ← больше шагов = меньше шума
-        image_quality = 92           # ← качество JPEG при сжатии
-        max_image_size = 512         # ← размер для ресайза
-
-        # 🔑 Добавляем магические токены качества к промпту пользователя
-        enhanced_prompt = f"{prompt}{QUALITY_TOKENS}"
+        # 🔑 Усиленный промпт для качества фона
+        quality_suffix = (
+            ", professional photography, cinematic lighting, sharp focus, "
+            "8k uhd, dslr, soft lighting, high quality, film grain, "
+            "detailed background, realistic, depth of field, bokeh"
+        )
+        enhanced_prompt = f"{prompt}{quality_suffix}"
         
-        logger.info(f"🎨 Photoshoot prompt: {enhanced_prompt[:100]}...")
-        logger.info(f"📊 Params: strength={strength}, guidance={guidance_scale}, steps={num_steps}")
-
-        image_bytes = await generate_photoshoot_with_cloudflare(
-            prompt=enhanced_prompt,      # ← используем улучшенный промпт
-            source_image_bytes=source_image,
-            width=width,
-            height=height,
-            strength=strength,
-            guidance_scale=guidance_scale,  # ← явно передаём
-            num_steps=num_steps,            # ← явно передаём
-            negative_prompt=NEGATIVE_PROMPT,  # ← полный negative prompt
-            max_image_size=max_image_size,
-            image_quality=image_quality
+        # 🔑 Negative prompt для чистого результата
+        neg_prompt = (
+            "deformed, distorted, disfigured, bad anatomy, extra limb, "
+            "blurry, ugly, mutated, watermark, text, signature, "
+            "low quality, jpeg artifacts, cartoon, anime, 3d render"
         )
 
-        if not image_bytes:
+        # 🚀 Запускаем inpainting-фотосессию
+        logger.info(f"🎨 Photoshoot: '{prompt}' | face detection → inpainting")
+        
+        result_bytes = await generate_inpainting_photoshoot(
+            prompt=enhanced_prompt,
+            source_image_bytes=source_image,
+            width=512,
+            height=512,
+            strength=0.9,        # высокий: маска защищает лицо
+            guidance=9.5,        # строгое следование промпту для фона
+            steps=25,            # стабильность
+            negative_prompt=neg_prompt
+        )
+
+        if not result_bytes:
             raise Exception("Cloudflare не вернул изображение")
 
-        caption = f"✅ Готово!\nПромпт: {prompt}"
-
+        # Отправляем результат
+        caption = f"✅ Готово!\n🎨 Промпт: {prompt}"
         if isinstance(status_msg, types.Message):
             await status_msg.delete()
-
-        await send_photo(event, BufferedInputFile(image_bytes, filename="photoshoot.jpg"), caption=caption)
+        
+        await send_photo(
+            event, 
+            BufferedInputFile(result_bytes, filename="photoshoot.jpg"), 
+            caption=caption
+        )
 
     except Exception as e:
-        logger.exception("Photoshoot generation error")
-        error_text = f"❌ Ошибка: {str(e)}"
+        logger.exception("❌ Photoshoot error")
+        error_text = f"❌ Ошибка генерации: {str(e)[:150]}"
         if isinstance(status_msg, types.Message):
             await status_msg.edit_text(error_text)
         else:
