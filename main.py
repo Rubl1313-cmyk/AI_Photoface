@@ -147,7 +147,7 @@ async def simple_generation_start(message: types.Message, state: FSMContext):
         "Например: красивый закат над горами, цифровое искусство"
     )
 
-@dp.message(lambda msg: msg.text == "🖼️ Замена лица на своём изображении")
+@dp.message(lambda msg: msg.text and "Замена лица на своё фото" in msg.text)
 async def swap_own_image_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     if not usage.check_limit(user_id):
