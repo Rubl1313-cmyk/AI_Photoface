@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎨 AI PhotoStudio — Main Bot File
+🎨 AI PhotoStudio — Main Bot File (FINAL VERSION)
 - Генерация с заменой лица (портрет / полный рост)
 - Простая генерация
 - Замена лица на своём фото (без генерации)
@@ -40,7 +40,7 @@ SWAP_OWN_BUTTON = "🖼️ Замена лица на своём изображ�
 PHOTOSHOOT_BUTTON = "✨ ИИ фотосессия"
 
 # 🔑 ЛИМИТЫ TELEGRAM
-MAX_PROMPT_LENGTH = 1024  # Максимальная длина промпта для caption
+MAX_PROMPT_LENGTH = 1024  # Максимальная длина промпта
 MAX_CAPTION_LENGTH = 1024  # Лимит Telegram caption
 
 # ------------------------------------------------------------
@@ -185,7 +185,6 @@ async def photoshoot_start(message: types.Message, state: FSMContext):
 @dp.message(UserStates.waiting_for_face, F.photo | F.document)
 async def receive_face_photo(message: types.Message, state: FSMContext):
     try:
-        # Получаем фото (берём наибольшее доступное)
         photo = message.photo[-1] if message.photo else None
         if not photo and message.document:
             if message.document.mime_type.startswith("image/"):
@@ -198,7 +197,6 @@ async def receive_face_photo(message: types.Message, state: FSMContext):
             await message.answer("❌ Не удалось получить изображение. Попробуйте ещё раз.")
             return
         
-        # Скачиваем фото
         file = await bot.get_file(photo.file_id)
         file_bytes = await bot.download_file(file.file_path)
         source_image = file_bytes.read() if hasattr(file_bytes, 'read') else file_bytes
@@ -207,13 +205,11 @@ async def receive_face_photo(message: types.Message, state: FSMContext):
         mode = data.get("mode")
         
         if mode == "generate":
-            # Режим "С заменой лица" → дальше пол, стиль, промпт
             await state.update_data(face_image=source_image)
             await state.set_state(UserStates.waiting_for_gender)
             await message.answer("Выберите пол для генерации:", reply_markup=get_gender_keyboard())
         
         elif mode == "swap_own":
-            # Режим "Замена лица на своём фото" → ждём второе фото
             await state.update_data(source_face=source_image)
             await state.set_state(UserStates.waiting_for_target_swap)
             await message.answer(
@@ -259,43 +255,32 @@ async def receive_photoshoot_photo(message: types.Message, state: FSMContext):
         await state.clear()
 
 # ------------------------------------------------------------
-# Обработчик выбора пола
+# Обработчик выбора пола (с state-фильтром!)
 # ------------------------------------------------------------
-@dp.callback_query(UserStates.waiting_for_gender, F.data.in_(["male", "female"]))
-async def choose_gender(callback: types.CallbackQuery, state: FSMContext):
-    await state.update_data(gender=callback.data)
-    await state.set_state(UserStates.waiting_for_style)
-    await callback.message.edit_text("Выберите стиль изображения:", reply_markup=get_style_keyboard())
+@dp.callback_query(UserStates.waiting_for_gender, lambda c: c.data.startswith("gender_"))
+async def process_gender(callback: types.CallbackQuery, state: FSMContext):
+    gender = callback.data.replace("gender_", "")
+    await state.update_data(gender=gender)
+    await state.set_state(UserStates.waiting_for_prompt)
+    
+    logger.info(f"👤 Gender selected: {gender} by user {callback.from_user.id}")
+    
+    await callback.message.edit_text(
+        "✅ Пол учтён. Теперь напиши **текстовое описание** того, что должно быть на финальном изображении.\n"
+        "📝 Максимальная длина: 1024 символа.\n"
+        "Например: в костюме на фоне космоса"
+    )
 
 # ------------------------------------------------------------
 # Обработчик выбора стиля
 # ------------------------------------------------------------
-@dp.callback_query(UserStates.waiting_for_style, F.data.startswith("style_"))
-async def choose_style(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(UserStates.waiting_for_prompt, lambda c: c.data.startswith("style_"))
+async def process_style(callback: types.CallbackQuery, state: FSMContext):
     style = callback.data.replace("style_", "")
     await state.update_data(chosen_style=style)
-    await state.set_state(UserStates.waiting_for_shot_type)
-    await callback.message.edit_text("Выберите тип кадра:", reply_markup=get_shot_type_keyboard())
-
-# ------------------------------------------------------------
-# Обработчик выбора типа кадра
-# ------------------------------------------------------------
-@dp.callback_query(UserStates.waiting_for_shot_type, F.data.in_(["portrait", "fullbody"]))
-async def choose_shot_type(callback: types.CallbackQuery, state: FSMContext):
-    shot_type = callback.data
-    await state.update_data(shot_type=shot_type)
-    await state.set_state(UserStates.waiting_for_prompt)
-    
-    gender = (await state.get_data()).get("gender", "person")
-    gender_text = "профессиональное фото мужчины" if gender == "male" else "профессиональное фото женщины"
-    
-    shot_text = "портрет (лицо и плечи)" if shot_type == "portrait" else "в полный рост"
-    
     await callback.message.edit_text(
-        f"Отлично! Теперь напиши описание для генерации.\n"
-        f"📝 Максимальная длина промпта: 1024 символа.\n\n"
-        f"💡 Совет: укажи, что это {gender_text}, {shot_text}, и добавь детали сцены, одежды, настроения.\n\n"
-        f"Пример: {gender_text} в космическом скафандре на фоне туманности, цифровое искусство, неон"
+        "✅ Стиль выбран. Теперь напиши описание для генерации.\n"
+        "📝 Максимальная длина: 1024 символа."
     )
 
 # ------------------------------------------------------------
@@ -352,7 +337,6 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
     source_face = data.get("face_image")
     gender = data.get("gender")
     style = data.get("chosen_style")
-    shot_type = data.get("shot_type")
     prompt = data.get("prompt") if isinstance(event, types.CallbackQuery) else event.text.strip()
     
     if not source_face or not prompt:
@@ -360,7 +344,7 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         await state.clear()
         return
     
-    # 🔑 ПРОВЕРКА ДЛИНЫ ПРОМПТА (ещё раз на всякий случай)
+    # 🔑 ПРОВЕРКА ДЛИНЫ ПРОМПТА
     is_valid, error_msg = validate_prompt_length(prompt)
     if not is_valid:
         await send_message(event, error_msg)
@@ -382,17 +366,16 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         translated_prompt = translator.translate(prompt)
         
         # Формируем полный промпт
-        gender_text = "professional photo of man" if gender == "male" else "professional photo of woman"
-        shot_text = "portrait, close-up of face and shoulders" if shot_type == "portrait" else "full body shot, full length"
+        gender_text = "профессиональное фото мужчины" if gender == "male" else "профессиональное фото девушки"
         
         # 🔑 style УЖЕ включён в промпт, не передаём отдельным параметром!
-        full_prompt = f"{translated_prompt}, {gender_text}, {shot_text}, {style}, professional photography, sharp focus, 8k"
+        full_prompt = f"{translated_prompt}, {gender_text}, {style}, professional photography, sharp focus, 8k"
         
         # 🔑 ИСПРАВЛЕНО: УБРАН параметр style= из вызова!
         image_bytes = await generate_with_cloudflare(
             prompt=full_prompt,
             width=1024,
-            height=1024 if shot_type == "portrait" else 768,
+            height=1024,
             negative_prompt="blurry, low quality, distorted face, extra limbs, bad anatomy"
         )
         
@@ -494,7 +477,6 @@ async def proceed_simple_generation(event: types.Message | types.CallbackQuery, 
 async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: FSMContext):
     """
     ✨ ИИ фотосессия: фото пользователя + промпт → inpainting с сохранением лица
-    Схема: Telegram → Render (face detection via HF Space) → Cloudflare (inpainting) → Telegram
     """
     data = await state.get_data()
     source_image = data.get("source_image")
@@ -528,7 +510,7 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
         
         # 🔑 Усиленный промпт для качества фона
         quality_suffix = (
-            "professional photography, cinematic lighting, sharp focus, "
+            ", professional photography, cinematic lighting, sharp focus, "
             "8k uhd, dslr, soft lighting, high quality, film grain, "
             "detailed background, realistic, depth of field, bokeh"
         )
@@ -549,9 +531,9 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
             source_image_bytes=source_image,
             width=512,
             height=512,
-            strength=0.95,        # высокий: маска защищает лицо
-            guidance=10.0,        # строгое следование промпту для фона
-            steps=20,             # максимум для inpainting модели CF
+            strength=0.95,
+            guidance=10.0,
+            steps=20,
             negative_prompt=neg_prompt
         )
         
@@ -643,20 +625,33 @@ async def receive_target_for_swap(message: types.Message, state: FSMContext):
         await state.clear()
 
 # ------------------------------------------------------------
+# 🔍 ДЕБАГ: Ловим необработанные callback (для отладки)
+# ------------------------------------------------------------
+@dp.callback_query()
+async def debug_unhandled_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Ловит все callback, которые не обработались другими хендлерами"""
+    current_state = await state.get_state()
+    logger.warning(
+        f"⚠️ Unhandled callback: '{callback.data}' "
+        f"from user {callback.from_user.id} "
+        f"in state {current_state}"
+    )
+    await callback.answer("⚠️ Этот запрос ещё в разработке или произошла ошибка", show_alert=True)
+
+# ------------------------------------------------------------
 # Запуск вебхука
 # ------------------------------------------------------------
 async def on_startup(dispatcher: Dispatcher):
     await bot.set_webhook(config.WEBHOOK_URL)
     logger.info(f"✅ Webhook set to {config.WEBHOOK_URL}")
-    # Отправляем уведомление админу о запуске
     try:
         await bot.send_message(config.ADMIN_ID, f"🚀 {config.BOT_NAME} запущен! ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
     except:
         pass
 
 async def on_shutdown(dispatcher: Dispatcher):
-    # await bot.delete_webhook()
-    logger.info("🛑Bot stopped")
+    await bot.delete_webhook()
+    logger.info("🛑 Webhook deleted, bot stopped")
 
 # ------------------------------------------------------------
 # Основной запуск
