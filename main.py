@@ -287,7 +287,7 @@ async def choose_shot_type(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_prompt)
     
     gender = (await state.get_data()).get("gender", "person")
-    gender_text = "мужчина" if gender == "male" else "женщина"
+    gender_text = "профессиональное фото мужчины" if gender == "male" else "профессиональное фото женщины"
     
     shot_text = "портрет (лицо и плечи)" if shot_type == "portrait" else "в полный рост"
     
