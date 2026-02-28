@@ -650,8 +650,8 @@ async def on_startup(dispatcher: Dispatcher):
         pass
 
 async def on_shutdown(dispatcher: Dispatcher):
-    await bot.delete_webhook()
-    logger.info("🛑 Webhook deleted, bot stopped")
+    # await bot.delete_webhook()
+    logger.info("🛑 Bot stopped")
 
 # ------------------------------------------------------------
 # Основной запуск
