@@ -159,112 +159,123 @@ def create_inpainting_mask(
     face_bbox: Optional[Dict[str, int]],
     width: int,
     height: int,
-    face_padding_percent: float = 0.15,  # 🔑 15% padding вокруг лица
-    blur_radius: int = 12
+    face_padding_percent: float = 0.20,  # ← Увеличил с 0.15 до 0.20
+    blur_radius: int = 15,                # ← Увеличил с 12 до 15
+    use_face_mesh: bool = True            # ← Новый параметр
 ) -> bytes:
     """
-    🔥 Создаёт маску для inpainting:
-    ⚫ Чёрный (0) = сохранить (лицо)
-    ⚪ Белый (255) = изменить (фон)
-    
-    Цель: 15-20% защищённой области (только лицо)
+    🔥 УЛУЧШЕННАЯ маска для inpainting:
+    - Точный овал лица (не просто прямоугольник)
+    - Адаптивный padding
+    - Плавные границы
     """
     try:
-        logger.info(f"📐 Creating mask for {width}x{height} image")
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        w, h = img.size
         
-        # Белая маска по умолчанию (всё менять)
-        mask = Image.new("L", (width, height), 255)
+        mask = Image.new("L", (w, h), 255)  # Белый = менять фон
         draw = ImageDraw.Draw(mask)
         
         if face_bbox and face_bbox.get("width", 0) > 20:
-            # 🔑 Используем детектированное лицо
             cx = face_bbox["x"] + face_bbox["width"] // 2
             cy = face_bbox["y"] + face_bbox["height"] // 2
             
-            # Компактный padding (только лицо + немного кожи)
-            padding_x = int(face_bbox["width"] * face_padding_percent)
-            padding_y = int(face_bbox["height"] * face_padding_percent)
-            rw = face_bbox["width"] // 2 + padding_x
-            rh = face_bbox["height"] // 2 + padding_y
+            # 🔑 УЛУЧШЕНИЕ 1: Эллипс вместо прямоугольника
+            # Учитываем пропорции лица
+            face_width = face_bbox["width"]
+            face_height = face_bbox["height"]
             
-            # Чёрный овал (СОХРАНИТЬ лицо)
-            draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
+            # 🔑 УЛУЧШЕНИЕ 2: Адаптивный padding
+            # Для крупных лиц меньше padding, для мелких - больше
+            base_padding = face_padding_percent
+            if face_width > 200:  # Крупное лицо
+                adaptive_padding = base_padding * 0.8
+            elif face_width < 100:  # Мелкое лицо
+                adaptive_padding = base_padding * 1.3
+            else:
+                adaptive_padding = base_padding
             
-            # Минимальный градиент для плавного перехода (2 слоя)
-            for i in range(1, 3):
-                gray = int(85 * i)  # 85, 170
-                draw.ellipse([cx-rw-i*4, cy-rh-i*4, cx+rw+i*4, cy+rh+i*4], fill=gray)
-                
-            logger.info(f"🎯 Using detected face: {face_bbox['width']}x{face_bbox['height']} + {padding_x}px padding")
+            padding_x = int(face_width * adaptive_padding)
+            padding_y = int(face_height * adaptive_padding)
+            
+            # 🔑 УЛУЧШЕНИЕ 3: Овал лица (уже чем bounding box)
+            # Лицо обычно уже чем bbox на 10-15%
+            rw = (face_width // 2) * 0.85 + padding_x
+            rh = (face_height // 2) * 0.90 + padding_y
+            
+            # Сдвигаем центр немного вверх (лицо выше центра bbox)
+            adjusted_cy = cy - (face_height * 0.10)
+            
+            # Рисуем точный овал лица
+            draw.ellipse([
+                cx - rw, adjusted_cy - rh,
+                cx + rw, adjusted_cy + rh
+            ], fill=0)
+            
+            # 🔑 УЛУЧШЕНИЕ 4: Многослойный градиент (5 слоёв вместо 2)
+            for i in range(1, 6):
+                gray = int(50 * i)  # 50, 100, 150, 200, 250
+                extra = i * 6
+                draw.ellipse([
+                    cx - rw - extra, adjusted_cy - rh - extra,
+                    cx + rw + extra, adjusted_cy + rh + extra
+                ], fill=gray)
+            
+            logger.info(f"🎯 Precise face mask: {rw*2:.0f}x{rh*2:.0f}, padding={adaptive_padding:.1%}")
             
         else:
-            # 🔑 FALLBACK: эвристика для портретов (если детекция не сработала)
-            if height > width:  # Вертикальное (портрет)
-                face_w = int(width * 0.45)
-                face_h = int(height * 0.32)
-                face_x = (width - face_w) // 2
-                face_y = int(height * 0.08)
-            else:  # Квадратное или горизонтальное
-                face_w = int(width * 0.40)
-                face_h = int(height * 0.45)
-                face_x = (width - face_w) // 2
-                face_y = int(height * 0.10)
+            # Fallback эвристика (улучшенная)
+            if h > w:
+                face_w = int(w * 0.45)
+                face_h = int(h * 0.35)
+                face_x = (w - face_w) // 2
+                face_y = int(h * 0.08)
+            else:
+                face_w = int(w * 0.40)
+                face_h = int(h * 0.48)
+                face_x = (w - face_w) // 2
+                face_y = int(h * 0.10)
             
-            draw.ellipse([face_x-25, face_y-25, face_x+face_w+25, face_y+face_h+25], fill=0)
-            
-            for i in range(1, 3):
-                gray = int(85 * i)
-                draw.ellipse([face_x-25-i*4, face_y-25-i*4, face_x+face_w+25+i*4, face_y+face_h+25+i*4], fill=gray)
-            
-            logger.info(f"🎯 Using heuristic fallback: {face_w}x{face_h} @ ({face_x},{face_y})")
+            draw.ellipse([face_x-30, face_y-30, face_x+face_w+30, face_y+face_h+30], fill=0)
+            for i in range(1, 6):
+                gray = int(50 * i)
+                draw.ellipse([face_x-30-i*6, face_y-30-i*6, face_x+face_w+30+i*6, face_y+face_h+30+i*6], fill=gray)
         
-        # 🔑 Лёгкое размытие для плавного перехода
+        # 🔑 УЛУЧШЕНИЕ 5: Сильное размытие (radius=15 вместо 12)
         if blur_radius > 0:
             mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
         
-        # 🔍 Статистика маски
+        # Статистика
         mask_data = list(mask.getdata())
         protected = sum(1 for p in mask_data if p < 128)
-        total = len(mask_data)
-        percent = (protected / total) * 100
+        percent = (protected / len(mask_data)) * 100
+        logger.info(f"🎭 Mask: {percent:.1f}% protected (target: 18-22%)")
         
-        logger.info(f"🎭 Mask: {percent:.1f}% protected ({protected}/{total} pixels)")
-        
-        # ⚠️ Корректировка если маска слишком маленькая/большая
-        if percent < 10 or percent > 30:
-            logger.warning(f"⚠️ Mask {percent:.1f}% out of optimal range (10-30%), adjusting...")
-            mask = Image.new("L", (width, height), 255)
+        # Корректировка если вышла за пределы
+        if percent < 15 or percent > 28:
+            logger.warning(f"⚠️ Mask {percent:.1f}% out of range, adjusting...")
+            mask = Image.new("L", (w, h), 255)
             draw = ImageDraw.Draw(mask)
-            # Гарантированная область для лица
-            draw.ellipse([width*0.27, height*0.08, width*0.73, height*0.40], fill=0)
-            mask = mask.filter(ImageFilter.GaussianBlur(radius=12))
-            # Пересчитываем
-            mask_data = list(mask.getdata())
-            protected = sum(1 for p in mask_data if p < 128)
-            percent = (protected / total) * 100
-            logger.info(f"🔄 Adjusted mask: {percent:.1f}% protected")
+            draw.ellipse([w*0.25, h*0.08, w*0.75, h*0.45], fill=0)
+            for i in range(1, 6):
+                gray = int(50 * i)
+                draw.ellipse([w*0.25-i*8, h*0.08-i*8, w*0.75+i*8, h*0.45+i*8], fill=gray)
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
         
-        # Сохраняем как PNG (без сжатия для точности)
         out = io.BytesIO()
         mask.save(out, format="PNG")
-        logger.info(f"💾 Mask size: {len(out.getvalue())} bytes")
-        
         return out.getvalue()
         
     except Exception as e:
-        logger.error(f"❌ Mask creation error: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        
-        # КРАЙНИЙ СЛУЧАЙ: гарантированная маска
+        logger.error(f"❌ Mask error: {e}")
+        # Fallback
         mask = Image.new("L", (512, 512), 255)
         draw = ImageDraw.Draw(mask)
-        draw.ellipse([512*0.27, 512*0.08, 512*0.73, 512*0.40], fill=0)
-        mask = mask.filter(ImageFilter.GaussianBlur(radius=12))
+        draw.ellipse([512*0.25, 512*0.08, 512*0.75, 512*0.45], fill=0)
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
         out = io.BytesIO()
         mask.save(out, format="PNG")
         return out.getvalue()
-
 
 # =============================================================================
 # 📸 TEXT-TO-IMAGE (FLUX) — НЕ ТРОГАЕМ, работает как было
