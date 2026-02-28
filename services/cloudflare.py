@@ -274,32 +274,37 @@ def create_inpainting_mask(
             logger.info(f"🌫️ Applied GaussianBlur radius={blur_radius}")
         
         # 🔍 Статистика маски
-        mask_data = list(mask.getdata())
-        protected = sum(1 for p in mask_data if p < 128)  # Чёрные + серые
-        total = len(mask_data)
-        percent = (protected / total) * 100
-        
-        logger.info(f"🎭 Mask: {percent:.1f}% protected ({protected}/{total} pixels)")
-        
-        # ⚠️ Корректировка если маска вышла за оптимальные пределы (18-22%)
-        if percent < 15 or percent > 28:
-            logger.warning(f"⚠️ Mask {percent:.1f}% out of optimal range (15-28%), adjusting...")
-            mask = Image.new("L", (width, height), 255)
-            draw = ImageDraw.Draw(mask)
-            # Гарантированная область для лица
-            draw.ellipse([width*0.25, height*0.08, width*0.75, height*0.45], fill=0)
-            for i in range(1, 6):
-                gray = int(50 * i)
-                draw.ellipse([
-                    width*0.25-i*8, height*0.08-i*8,
-                    width*0.75+i*8, height*0.45+i*8
-                ], fill=gray)
-            mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
-            # Пересчитываем
-            mask_data = list(mask.getdata())
-            protected = sum(1 for p in mask_data if p < 128)
-            percent = (protected / total) * 100
-            logger.info(f"🔄 Adjusted mask: {percent:.1f}% protected")
+        # 🔍 Статистика маски (исправлено)
+mask_data = list(mask.getdata())
+# 🔑 Считаем ВСЕ не-белые пиксели (0-254) как защищённые
+protected = sum(1 for p in mask_data if p < 255)
+total = len(mask_data)
+percent = (protected / total) * 100
+
+logger.info(f"🎭 Mask: {percent:.1f}% protected ({protected}/{total} pixels)")
+
+# ⚠️ Корректировка если маска вышла за пределы (15-35%)
+if percent < 15 or percent > 35:
+    logger.warning(f"⚠️ Mask {percent:.1f}% out of optimal range, adjusting...")
+    # Создаём гарантированную маску
+    mask = Image.new("L", (width, height), 255)
+    draw = ImageDraw.Draw(mask)
+    # Овал лица в центре верхней половины
+    draw.ellipse([width*0.25, height*0.08, width*0.75, height*0.45], fill=0)
+    # Градиентные слои
+    for i in range(1, 6):
+        gray = int(50 * i)
+        draw.ellipse([
+            width*0.25-i*8, height*0.08-i*8,
+            width*0.75+i*8, height*0.45+i*8
+        ], fill=gray)
+    # Размытие
+    mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
+    # Пересчитываем
+    mask_data = list(mask.getdata())
+    protected = sum(1 for p in mask_data if p < 255)
+    percent = (protected / total) * 100
+    logger.info(f"🔄 Adjusted mask: {percent:.1f}% protected")
         
         # Сохраняем как PNG (без сжатия для точности)
         out = io.BytesIO()
