@@ -591,7 +591,6 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
     try:
         image_bytes = await generate_with_cloudflare(
             prompt=full_prompt,
-            style=chosen_style,
             width=width,
             height=height,
             negative_prompt=negative_prompt
