@@ -353,7 +353,7 @@ async def handle_prompt(message: types.Message, state: FSMContext):
     data = await state.get_data()
     gender = data.get("gender")
     # Используем "девушка" для обхода NSFW-фильтров
-    gender_word = "мужчина" if gender == "male" else "профессиональное фото девушки 30 лет"
+    gender_word = "профессиональное фото мужчины" if gender == "male" else "профессиональное фото девушки"
     if gender_word not in prompt.lower():
         prompt = f"{gender_word}, {prompt}"
 
@@ -475,7 +475,7 @@ async def choose_shot_type(callback: types.CallbackQuery, state: FSMContext):
         width, height = 1024, 1024
     else:
         # Полный рост: человек целиком, лицо в кадр, вертикально
-        enhanced_prompt = f"full body shot full body shot, {prompt}, standing, from head to toe, facing camera, looking at viewer, face clearly visible, vertical composition"
+        enhanced_prompt = f"full body shot, {prompt}, standing, with legs, from head to toe, facing camera, looking at viewer, vertical composition"
         negative_prompt = "close-up, portrait, upper body, chest shot, profile, looking away, blurry face"
         width, height = 768, 1024  # вертикальное соотношение
 
