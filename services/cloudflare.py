@@ -7,16 +7,26 @@ import os
 from typing import Optional, Dict, Any
 from PIL import Image, ImageDraw, ImageFilter
 import io
-import numpy as np
-import cv2
 
 logger = logging.getLogger(__name__)
 
-# 🔑 Константы
+# =============================================================================
+# 🔑 КОНСТАНТЫ
+# =============================================================================
 MAX_IMAGE_KB = 400
 MAX_DIMENSION = 512
 JPEG_QUALITY = 90
 
+# 🔑 URL вашего Space для детекции лица (уже работает!)
+FACE_DETECT_SPACE_URL = os.getenv(
+    "FACE_DETECT_SPACE_URL",
+    "https://dmitry1313-face-swaper.hf.space/detect"
+)
+FACE_DETECT_SECRET = os.getenv("FACE_DETECT_SECRET", "")
+
+# =============================================================================
+# 🔧 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# =============================================================================
 
 def _compress_image(
     image_bytes: bytes,
@@ -24,7 +34,11 @@ def _compress_image(
     max_kb: int = MAX_IMAGE_KB,
     quality: int = JPEG_QUALITY
 ) -> bytes:
-    """Сжимает изображение"""
+    """
+    Сжимает изображение для отправки в API:
+    - Ресайз до max_dimension
+    - JPEG сжатие до max_kb
+    """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
@@ -50,175 +64,222 @@ def _compress_image(
         return image_bytes
 
 
-def detect_face_mediapipe(image_bytes: bytes) -> Optional[Dict[str, int]]:
-    """
-    🔥 Детекция лица через MediaPipe 0.10.32
-    ПРАВИЛЬНЫЙ импорт и использование
-    """
-    try:
-        # 🔑 ПРАВИЛЬНЫЙ импорт для MediaPipe
-        import mediapipe as mp
-        
-        # Конвертируем bytes → numpy → OpenCV
-        img_array = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        
-        if img is None:
-            logger.error("❌ Failed to decode image")
-            return None
-        
-        h, w = img.shape[:2]
-        logger.info(f"📐 Image loaded: {w}x{h}px")
-        
-        # 🔑 ПРАВИЛЬНОЕ использование mp.solutions.face_detection
-        mp_face_detection = mp.solutions.face_detection
-        
-        # 🔑 model_selection=1 для full-range (до 5 метров)
-        with mp_face_detection.FaceDetection(
-            model_selection=1,  # 0=short-range (2m), 1=full-range (5m)
-            min_detection_confidence=0.5
-        ) as face_detection:
-            # 🔑 BGR → RGB (MediaPipe требует RGB!)
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            results = face_detection.process(rgb_image)
-            
-            if results.detections:
-                # Берём первое (самое крупное) лицо
-                detection = results.detections[0]
-                bbox = detection.location_data.relative_bounding_box
-                
-                # Относительные → абсолютные координаты
-                x = max(0, int(bbox.xmin * w))
-                y = max(0, int(bbox.ymin * h))
-                width = min(w - x, int(bbox.width * w))
-                height = min(h - y, int(bbox.height * h))
-                
-                score = detection.score[0] if detection.score else 0
-                
-                logger.info(f"✅ Face detected: {width}x{height}px, score={score:.2f}")
-                
-                return {
-                    "x": x,
-                    "y": y,
-                    "width": width,
-                    "height": height,
-                    "score": score
-                }
-            else:
-                logger.warning("⚠️ No faces detected")
-                return None
-                
-    except AttributeError as e:
-        logger.error(f"❌ MediaPipe API error: {e}")
-        logger.error("💡 Check: pip install mediapipe==0.10.32")
-        return None
-    except ImportError as e:
-        logger.error(f"❌ MediaPipe not installed: {e}")
-        logger.error("💡 Install: pip install mediapipe==0.10.32 opencv-python-headless numpy")
-        return None
-    except Exception as e:
-        logger.error(f"❌ MediaPipe error: {type(e).__name__}: {e}")
-        return None
-
-
-def create_inpainting_mask(
-    image_bytes: bytes,
-    bbox: Optional[Dict[str, int]],
-    padding_percent: float = 0.40,
-    blur_radius: int = 18
-) -> bytes:
-    """
-    🔥 Создаёт маску для inpainting
-    ⚫ Чёрный (0) = сохранить (лицо)
-    ⚪ Белый (255) = изменить (фон)
-    """
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        w, h = img.size
-        
-        mask = Image.new("L", (w, h), 255)
-        draw = ImageDraw.Draw(mask)
-        
-        if bbox and bbox.get("width", 0) > 20:
-            # Используем детектированное лицо
-            cx = bbox["x"] + bbox["width"] // 2
-            cy = bbox["y"] + bbox["height"] // 2
-            padding_x = int(bbox["width"] * padding_percent)
-            padding_y = int(bbox["height"] * padding_percent)
-            rw = bbox["width"] // 2 + padding_x
-            rh = bbox["height"] // 2 + padding_y
-            
-            # Чёрный овал (сохранить)
-            draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
-            
-            # Градиент для плавного перехода
-            for i in range(1, 6):
-                gray = int(50 * i)
-                draw.ellipse([cx-rw-i*6, cy-rh-i*6, cx+rw+i*6, cy+rh+i*6], fill=gray)
-                
-        else:
-            # 🔥 FALLBACK: большая эвристическая маска
-            if h > w:  # Портрет
-                face_w = int(w * 0.65)
-                face_h = int(h * 0.50)
-                face_x = (w - face_w) // 2
-                face_y = int(h * 0.05)
-            else:  # Квадрат/горизонталь
-                face_w = int(w * 0.55)
-                face_h = int(h * 0.65)
-                face_x = (w - face_w) // 2
-                face_y = int(h * 0.08)
-            
-            draw.ellipse([face_x-55, face_y-55, face_x+face_w+55, face_y+face_h+55], fill=0)
-            
-            for i in range(1, 6):
-                gray = int(50 * i)
-                draw.ellipse([face_x-55-i*6, face_y-55-i*6, face_x+face_w+55+i*6, face_y+face_h+55+i*6], fill=gray)
-        
-        # Размытие
-        if blur_radius > 0:
-            mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        
-        # Проверка
-        data = list(mask.getdata())
-        protected = sum(1 for p in data if p < 128)
-        percent = (protected / len(data)) * 100
-        logger.info(f"🎭 Mask: {percent:.1f}% protected")
-        
-        if percent < 20:
-            logger.error("⚠️ Mask < 20%! Creating emergency mask...")
-            mask = Image.new("L", (w, h), 255)
-            draw = ImageDraw.Draw(mask)
-            draw.ellipse([w*0.15, h*0.05, w*0.85, h*0.60], fill=0)
-            mask = mask.filter(ImageFilter.GaussianBlur(radius=25))
-        
-        out = io.BytesIO()
-        mask.save(out, format="PNG")
-        return out.getvalue()
-        
-    except Exception as e:
-        logger.error(f"❌ Mask error: {e}")
-        fallback = Image.new("L", (512, 512), 255)
-        fb_out = io.BytesIO()
-        fallback.save(fb_out, format="PNG")
-        return fb_out.getvalue()
-
-
-def _no_none(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Удаляет None значения"""
+def _no_none( Dict[str, Any]) -> Dict[str, Any]:
+    """Удаляет ключи со значением None из словаря"""
     return {k: v for k, v in data.items() if v is not None}
 
 
+def truncate_caption(text: str, max_length: int = 1024, suffix: str = "...") -> str:
+    """
+    🔑 Обрезает текст до лимита Telegram caption (1024 символа)
+    """
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
+
+
 # =============================================================================
-# TEXT-TO-IMAGE (FLUX)
+# 🔍 DETECT FACE VIA CUSTOM HF SPACE
 # =============================================================================
+
+async def detect_face_via_space(image_bytes: bytes) -> Optional[Dict[str, Any]]:
+    """
+    🔥 Детекция лица через ваш приватный Space на Hugging Face
+    
+    Возвращает:
+        {
+            "x": int, "y": int,
+            "width": int, "height": int,
+            "score": float,
+            "image_width": int, "image_height": int
+        }
+        или None если лицо не найдено / ошибка
+    """
+    if not FACE_DETECT_SPACE_URL:
+        logger.warning("⚠️ FACE_DETECT_SPACE_URL not set")
+        return None
+    
+    try:
+        # 🔑 Увеличенный таймаут для cold start Space (до 120 сек)
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            files = {"file": ("image.jpg", image_bytes, "image/jpeg")}
+            headers = {}
+            if FACE_DETECT_SECRET:
+                headers["Authorization"] = f"Bearer {FACE_DETECT_SECRET}"
+            
+            logger.info(f"🔍 Requesting face detection from Space...")
+            response = await client.post(
+                FACE_DETECT_SPACE_URL,
+                files=files,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success") and result.get("face"):
+                    face = result["face"]
+                    img_size = result.get("image_size", {})
+                    logger.info(
+                        f"✅ Face detected via Space: "
+                        f"{face['width']}x{face['height']}px @ ({face['x']},{face['y']}), "
+                        f"score={face['score']:.3f}"
+                    )
+                    return {
+                        "x": face["x"],
+                        "y": face["y"],
+                        "width": face["width"],
+                        "height": face["height"],
+                        "score": face["score"],
+                        "image_width": img_size.get("width"),
+                        "image_height": img_size.get("height")
+                    }
+                else:
+                    logger.warning(f"⚠️ Space: {result.get('error', 'No face detected')}")
+            elif response.status_code == 404:
+                logger.warning("⚠️ Space returned 404: No face detected")
+            else:
+                logger.error(f"❌ Space API error {response.status_code}: {response.text[:200]}")
+                
+    except httpx.TimeoutException:
+        logger.error("❌ Space API timeout (cold start?)")
+    except httpx.RequestError as e:
+        logger.error(f"❌ Space API request error: {e}")
+    except Exception as e:
+        logger.error(f"❌ Space API unexpected error: {type(e).__name__}: {e}")
+    
+    return None
+
+
+# =============================================================================
+# 🎭 MASK CREATION FOR INPAINTING
+# =============================================================================
+
+def create_inpainting_mask(
+    image_bytes: bytes,
+    face_bbox: Optional[Dict[str, int]],
+    width: int,
+    height: int,
+    face_padding_percent: float = 0.15,  # 🔑 15% padding вокруг лица
+    blur_radius: int = 12
+) -> bytes:
+    """
+    🔥 Создаёт маску для inpainting:
+    ⚫ Чёрный (0) = сохранить (лицо)
+    ⚪ Белый (255) = изменить (фон)
+    
+    Цель: 15-20% защищённой области (только лицо)
+    """
+    try:
+        logger.info(f"📐 Creating mask for {width}x{height} image")
+        
+        # Белая маска по умолчанию (всё менять)
+        mask = Image.new("L", (width, height), 255)
+        draw = ImageDraw.Draw(mask)
+        
+        if face_bbox and face_bbox.get("width", 0) > 20:
+            # 🔑 Используем детектированное лицо
+            cx = face_bbox["x"] + face_bbox["width"] // 2
+            cy = face_bbox["y"] + face_bbox["height"] // 2
+            
+            # Компактный padding (только лицо + немного кожи)
+            padding_x = int(face_bbox["width"] * face_padding_percent)
+            padding_y = int(face_bbox["height"] * face_padding_percent)
+            rw = face_bbox["width"] // 2 + padding_x
+            rh = face_bbox["height"] // 2 + padding_y
+            
+            # Чёрный овал (СОХРАНИТЬ лицо)
+            draw.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=0)
+            
+            # Минимальный градиент для плавного перехода (2 слоя)
+            for i in range(1, 3):
+                gray = int(85 * i)  # 85, 170
+                draw.ellipse([cx-rw-i*4, cy-rh-i*4, cx+rw+i*4, cy+rh+i*4], fill=gray)
+                
+            logger.info(f"🎯 Using detected face: {face_bbox['width']}x{face_bbox['height']} + {padding_x}px padding")
+            
+        else:
+            # 🔑 FALLBACK: эвристика для портретов (если детекция не сработала)
+            if height > width:  # Вертикальное (портрет)
+                face_w = int(width * 0.45)
+                face_h = int(height * 0.32)
+                face_x = (width - face_w) // 2
+                face_y = int(height * 0.08)
+            else:  # Квадратное или горизонтальное
+                face_w = int(width * 0.40)
+                face_h = int(height * 0.45)
+                face_x = (width - face_w) // 2
+                face_y = int(height * 0.10)
+            
+            draw.ellipse([face_x-25, face_y-25, face_x+face_w+25, face_y+face_h+25], fill=0)
+            
+            for i in range(1, 3):
+                gray = int(85 * i)
+                draw.ellipse([face_x-25-i*4, face_y-25-i*4, face_x+face_w+25+i*4, face_y+face_h+25+i*4], fill=gray)
+            
+            logger.info(f"🎯 Using heuristic fallback: {face_w}x{face_h} @ ({face_x},{face_y})")
+        
+        # 🔑 Лёгкое размытие для плавного перехода
+        if blur_radius > 0:
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        
+        # 🔍 Статистика маски
+        mask_data = list(mask.getdata())
+        protected = sum(1 for p in mask_data if p < 128)
+        total = len(mask_data)
+        percent = (protected / total) * 100
+        
+        logger.info(f"🎭 Mask: {percent:.1f}% protected ({protected}/{total} pixels)")
+        
+        # ⚠️ Корректировка если маска слишком маленькая/большая
+        if percent < 10 or percent > 30:
+            logger.warning(f"⚠️ Mask {percent:.1f}% out of optimal range (10-30%), adjusting...")
+            mask = Image.new("L", (width, height), 255)
+            draw = ImageDraw.Draw(mask)
+            # Гарантированная область для лица
+            draw.ellipse([width*0.27, height*0.08, width*0.73, height*0.40], fill=0)
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=12))
+            # Пересчитываем
+            mask_data = list(mask.getdata())
+            protected = sum(1 for p in mask_data if p < 128)
+            percent = (protected / total) * 100
+            logger.info(f"🔄 Adjusted mask: {percent:.1f}% protected")
+        
+        # Сохраняем как PNG (без сжатия для точности)
+        out = io.BytesIO()
+        mask.save(out, format="PNG")
+        logger.info(f"💾 Mask size: {len(out.getvalue())} bytes")
+        
+        return out.getvalue()
+        
+    except Exception as e:
+        logger.error(f"❌ Mask creation error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # КРАЙНИЙ СЛУЧАЙ: гарантированная маска
+        mask = Image.new("L", (512, 512), 255)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse([512*0.27, 512*0.08, 512*0.73, 512*0.40], fill=0)
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=12))
+        out = io.BytesIO()
+        mask.save(out, format="PNG")
+        return out.getvalue()
+
+
+# =============================================================================
+# 📸 TEXT-TO-IMAGE (FLUX) — НЕ ТРОГАЕМ, работает как было
+# =============================================================================
+
 async def generate_with_cloudflare(
     prompt: str,
     width: int = 1024,
     height: int = 1024,
     negative_prompt: str = ""
 ) -> Optional[bytes]:
-    """Text-to-Image через FLUX"""
+    """
+    Text-to-Image генерация через FLUX.1 Schnell
+    (используется для "Просто генерация" и как первый шаг для "С заменой лица")
+    """
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
     payload = _no_none({
@@ -229,56 +290,83 @@ async def generate_with_cloudflare(
         "negative_prompt": negative_prompt.strip() if negative_prompt else None,
     })
     
+    logger.info(f"📡 text-to-image: {prompt[:50]}...")
+    
     async with httpx.AsyncClient(timeout=60) as client:
         try:
             resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
             resp.raise_for_status()
+            logger.info(f"✅ FLUX success: {len(resp.content)} bytes")
             return resp.content
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP {e.response.status_code}: {e.response.text[:200]}")
+            return None
         except Exception as e:
-            logger.error(f"❌ FLUX error: {e}")
+            logger.error(f"❌ FLUX error: {type(e).__name__}: {e}")
             return None
 
 
 # =============================================================================
 # 🎨 INPAINTING ДЛЯ «ИИ ФОТОСЕССИИ»
 # =============================================================================
+
 async def generate_inpainting_photoshoot(
     prompt: str,
     source_image_bytes: bytes,
     width: int = 512,
     height: int = 512,
-    strength: float = 0.9,
-    guidance: float = 9.5,
-    steps: int = 20,
+    strength: float = 0.95,      # 🔑 Высокий strength для изменения фона
+    guidance: float = 10.0,      # 🔑 Высокий guidance для строгого следования промпту
+    steps: int = 20,             # 🔑 Максимум для inpainting модели Cloudflare
     negative_prompt: str = ""
 ) -> Optional[bytes]:
-    """Inpainting фотосессия с MediaPipe детекцией"""
+    """
+    🎭 Inpainting фотосессия:
+    1. Сжимаем исходное изображение
+    2. 🔍 Детектируем лицо через ваш HF Space
+    3. 🎨 Создаём маску (лицо=чёрное, фон=белое)
+    4. ☁️ Отправляем в Cloudflare inpainting модель
+    5. ✅ Возвращаем результат
+    
+    Результат: лицо сохранено, фон изменён по промпту
+    """
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
-    # 1. Сжимаем
+    # 1. 🔧 Сжимаем исходное изображение
     compressed = _compress_image(source_image_bytes)
     image_b64 = base64.b64encode(compressed).decode()
     
-    # 2. 🔥 Детекция лица через MediaPipe
-    logger.info("🔍 Detecting face with MediaPipe 0.10.32...")
-    bbox = detect_face_mediapipe(compressed)
+    # Получаем размеры для маски
+    img = Image.open(io.BytesIO(compressed))
+    w, h = img.size
     
-    if bbox:
-        logger.info(f"✅ Face: {bbox['width']}x{bbox['height']}px, score={bbox['score']:.2f}")
+    # 2. 🔍 Детекция лица через ваш Space
+    logger.info("🔍 Detecting face via custom HF Space...")
+    face_bbox = await detect_face_via_space(compressed)
+    
+    if face_bbox:
+        logger.info(f"✅ Face: {face_bbox['width']}x{face_bbox['height']}px, score={face_bbox['score']:.3f}")
     else:
-        logger.warning("⚠️ Face not detected, using heuristic mask")
+        logger.warning("⚠️ Face not detected by Space, using heuristic mask")
     
-    # 3. Создаём маску
-    mask_bytes = create_inpainting_mask(compressed, bbox)
+    # 3. 🎨 Создаём маску
+    mask_bytes = create_inpainting_mask(
+        compressed,
+        face_bbox,
+        width=w,
+        height=h,
+        face_padding_percent=0.15,  # 15% padding
+        blur_radius=12
+    )
     mask_b64 = base64.b64encode(mask_bytes).decode()
     
-    # 4. Payload
-    safe_steps = min(20, max(10, int(steps)))
+    # 4. ☁️ Формируем payload для Cloudflare
+    safe_steps = min(20, max(10, int(steps)))  # 10-20 диапазон
     
     payload = _no_none({
         "prompt": prompt.strip(),
         "image_b64": image_b64,
-        "mask_b64": mask_b64,
+        "mask_b64": mask_b64,  # ← 🔑 КЛЮЧЕВОЕ: маска для inpainting
         "width": width,
         "height": height,
         "strength": strength,
@@ -287,9 +375,9 @@ async def generate_inpainting_photoshoot(
         "negative_prompt": negative_prompt.strip() if negative_prompt else None,
     })
     
-    logger.info(f"🚀 Inpainting: {len(compressed)}B img, {len(mask_bytes)}B mask")
+    logger.info(f"🚀 Inpainting request: {len(compressed)}B img, {len(mask_bytes)}B mask")
     
-    # 5. Отправляем
+    # 5. ✅ Отправляем в Cloudflare
     async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
@@ -302,3 +390,45 @@ async def generate_inpainting_photoshoot(
         except Exception as e:
             logger.error(f"❌ Inpainting error: {type(e).__name__}: {e}")
             return None
+
+
+# =============================================================================
+# 🔄 FACE SWAP ПОСЛЕ FLUX (для режима "С заменой лица")
+# =============================================================================
+
+async def swap_face_after_flux(
+    flux_image_bytes: bytes,
+    source_face_bytes: bytes,
+    facefusion_url: str
+) -> Optional[bytes]:
+    """
+    🔁 Замена лица на сгенерированном FLUX изображении через FaceFusion API
+    
+    Используется в режиме "С заменой лица":
+    1. FLUX генерирует изображение по промпту
+    2. FaceFusion заменяет лицо на сгенерированном изображении на лицо пользователя
+    """
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            files = {
+                "target": ("target.jpg", flux_image_bytes, "image/jpeg"),
+                "source": ("source.jpg", source_face_bytes, "image/jpeg")
+            }
+            
+            logger.info(f"🔄 Sending to FaceFusion: {len(flux_image_bytes)}B target, {len(source_face_bytes)}B source")
+            
+            response = await client.post(
+                f"{facefusion_url}/swap",
+                files=files
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Face swap success: {len(response.content)} bytes")
+                return response.content
+            else:
+                logger.error(f"❌ FaceFusion error {response.status_code}: {response.text[:200]}")
+                return None
+                
+    except Exception as e:
+        logger.error(f"❌ Face swap error: {type(e).__name__}: {e}")
+        return None
