@@ -252,6 +252,9 @@ async def process_help(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=get_main_menu()
     )
     logger.info(f"❓ Help requested by user {callback.from_user.id}")
+# ... (всё что было до хендлеров нижнего меню) ...
+
+
 # ------------------------------------------------------------
 # 🔘 ОБРАБОТЧИКИ НИЖНЕГО МЕНЮ (TEXT) — 🔥 УЛУЧШЕНО!
 # ------------------------------------------------------------
@@ -259,13 +262,174 @@ async def process_help(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(lambda msg: msg.text == "🔄 С заменой лица")
 async def create_photo_start_text(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-…        
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Дневной лимит исчерпан."); return
+    await state.set_state(UserStates.waiting_for_face)
+    await state.update_data(mode="generate")
+    await message.answer(
+        "📸 **Режим: С заменой лица**\n\n"
+        "Отправь фото с лицом (анфас, хорошее освещение).\n\n"
+        "💡 **Советы**:\n"
+        "• Лицо должно быть чётко видно\n"
+        "• Избегайте теней на лице\n"
+        "• Чем лучше качество фото, тем лучше результат!\n\n"
+        "📝 Максимум 1024 символа для промпта."
+    )
+    logger.info(f"🔄 Mode generate (text) by user {user_id}")
+
+
+@dp.message(lambda msg: msg.text == "✨ Просто генерация")
+async def simple_generation_start_text(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Дневной лимит исчерпан."); return
+    await state.set_state(UserStates.waiting_for_prompt_simple)
+    await message.answer(
+        "✨ **Режим: Просто генерация**\n\n"
+        "Напиши описание что сгенерировать.\n\n"
+        "💡 **Примеры хороших промптов**:\n"
+        "• Красивый закат над горами, цифровое искусство\n"
+        "• Футуристический город, киберпанк, неон\n"
+        "• Портрет девушки в стиле фэнтези\n\n"
+        "📝 Максимум 1024 символа."
+    )
+    logger.info(f"✨ Mode simple (text) by user {user_id}")
+
+
+@dp.message(lambda msg: msg.text == "🖼️ Замена лица на своём изображении")
+async def swap_own_image_start_text(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Дневной лимит исчерпан."); return
+    await state.set_state(UserStates.waiting_for_face)
+    await state.update_data(mode="swap_own")
+    await message.answer(
+        "🖼️ **Режим: Замена лица на своём фото**\n\n"
+        "1️⃣ Отправь фото лица которое нужно вставить\n"
+        "2️⃣ Затем отправь фото НА которое заменить\n\n"
+        "💡 **Советы**:\n"
+        "• Оба фото должны быть хорошего качества\n"
+        "• Лицо должно быть анфас\n"
+        "• Избегайте сильных теней"
+    )
+    logger.info(f"🖼️ Mode swap_own (text) by user {user_id}")
+
+
+@dp.message(lambda msg: msg.text == "✨ ИИ фотосессия")
+async def photoshoot_start_text(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if not usage.check_limit(user_id):
+        await message.answer("❌ Дневной лимит исчерпан."); return
+    await state.set_state(UserStates.waiting_for_face_photoshoot)
+    await state.update_data(mode="photoshoot")
+    await message.answer(
+        "🎨 **Режим: ИИ фотосессия**\n\n"
+        "📸 Отправь фото человека для фотосессии.\n\n"
+        "💡 **Как это работает**:\n"
+        "1. Отправьте фото (лицо должно быть чётко видно)\n"
+        "2. Выберите пол и тип кадра\n"
+        "3. Опишите сцену (например: на пляже на закате)\n"
+        "4. Получите профессиональную фотосессию!\n\n"
+        "🔥 ИИ сохранит лицо и создаст новую сцену."
+    )
+    logger.info(f"🎨 Mode photoshoot (text) by user {user_id}")
+
+
+@dp.message(lambda msg: msg.text == "📊 Моя статистика")
+async def process_stats_text(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    remaining = config.DAILY_LIMIT - len(usage.usage.get(user_id, []))
+    used = config.DAILY_LIMIT - remaining
+    await message.answer(
+        f"📊 **Ваша статистика**\n\n"
+        f"🔹 Использовано сегодня: {used}/{config.DAILY_LIMIT}\n"
+        f"🔹 Осталось: {remaining}\n"
+        f"🔹 Лимит обновится: завтра в 00:00 UTC\n\n"
+        f"💡 **Совет**: используйте лимит с умом — "
+        f"каждая генерация требует ресурсов!"
+    )
+    logger.info(f"📊 Stats (text) by user {user_id}: {used}/{config.DAILY_LIMIT}")
+
+
+@dp.message(lambda msg: msg.text == "❓ Помощь")
+async def process_help_text(message: types.Message, state: FSMContext):
+    """🔥 УЛУЧШЕННАЯ помощь"""
+    await message.answer(
+        f"❓ **Помощь — {config.BOT_NAME}**\n\n"
+        
+        f"🔄 **С заменой лица**:\n"
+        f"   • Загрузите фото лица\n"
+        f"   • Выберите пол, стиль и тип кадра\n"
+        f"   • Опишите сцену (промпт)\n"
+        f"   • Получите результат с вашим лицом!\n\n"
+        
+        f"✨ **Просто генерация**:\n"
+        f"   • Напишите описание\n"
+        f"   • Получите изображение по тексту\n\n"
+        
+        f"🖼️ **Замена на своём фото**:\n"
+        f"   • Отправьте 2 фото\n"
+        f"   • Я заменю лицо на целевом изображении\n\n"
+        
+        f"🎨 **ИИ фотосессия**:\n"
+        f"   • Загрузите фото человека\n"
+        f"   • Опишите сцену\n"
+        f"   • Получите профессиональную фотосессию\n\n"
+        
+        f"📝 **Важно**:\n"
+        f"   • Промпт максимум 1024 символа\n"
+        f"   • Дневной лимит: {config.DAILY_LIMIT} генераций\n"
+        f"   • Лицо должно быть анфас и чётко видно\n\n"
+        
+        f"💡 **Советы для лучших результатов**:\n"
+        f"   • Используйте качественные фото\n"
+        f"   • Описывайте сцену детально\n"
+        f"   • Избегайте теней на лице\n\n"
+        
+        f"🔧 **Проблемы?** Напишите админу."
+    )
+    logger.info(f"❓ Help (text) by user {message.from_user.id}")
+
+
+@dp.message(lambda msg: msg.text == "🤖 О боте")
+async def process_about_text(message: types.Message, state: FSMContext):
+    """🔥 НОВЫЙ хендлер: О боте"""
+    await message.answer(
+        f"🤖 **О боте {config.BOT_NAME}**\n\n"
+        
+        f"🎨 **Что это**:\n"
+        f"   Профессиональный бот для генерации изображений "
+        f"с использованием передовых ИИ-моделей (FLUX.1, FaceFusion).\n\n"
+        
+        f"✨ **Возможности**:\n"
+        f"   • 🔄 Генерация с заменой лица\n"
+        f"   • 🎨 Простая генерация по тексту\n"
+        f"   • 🖼️ Замена лица на ваших фото\n"
+        f"   • 📸 ИИ фотосессии с сохранением лица\n\n"
+        
+        f"🚀 **Технологии**:\n"
+        f"   • FLUX.1 Schnell — генерация изображений\n"
+        f"   • FaceFusion — замена лиц\n"
+        f"   • MediaPipe — детекция лиц\n"
+        f"   • Cloudflare Workers — быстрая обработка\n\n"
+        
+        f"📊 **Лимиты**:\n"
+        f"   • {config.DAILY_LIMIT} генераций в день\n"
+        f"   • Промпт до 1024 символов\n"
+        f"   • Лимит обновляется ежедневно в 00:00 UTC\n\n"
+        
+        f"💡 **Советы**:\n"
+        f"   • Используйте качественные фото\n"
+        f"   • Описывайте сцену детально\n"
+        f"   • Избегайте теней на лице\n\n"
+        
         f"🔗 **Версия**: 1.0.0\n"
         f"📅 **Запущен**: {datetime.now().strftime('%Y')}\n\n"
         
         f"💬 **Есть вопросы?** Пишите админу!"
     )
     logger.info(f"🤖 About bot requested by user {message.from_user.id}")
+
 # Получение фото
 # ------------------------------------------------------------
 @dp.message(UserStates.waiting_for_face, F.photo | F.document)
