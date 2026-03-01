@@ -388,6 +388,39 @@ async def process_help_text(message: types.Message, state: FSMContext):
     )
     logger.info(f"❓ Help (text) by user {message.from_user.id}")
 
+@dp.message(lambda msg: msg.text == "🤖 О боте")
+async def process_about_text(message: types.Message, state: FSMContext):
+    """🔥 Обработчик кнопки нижнего меню "О боте""""
+    await message.answer(
+        f"🤖 **О боте {config.BOT_NAME}**\n\n"
+        
+        f"🎨 **Что это**:\n"
+        f"   Профессиональный бот для генерации изображений "
+        f"с использованием FLUX.1 и FaceFusion.\n\n"
+        
+        f"✨ **Возможности**:\n"
+        f"   • 🔄 Генерация с заменой лица\n"
+        f"   • 🎨 Генерация по тексту\n"
+        f"   • 🖼️ Замена лица на фото\n"
+        f"   • 📸 ИИ фотосессии\n\n"
+        
+        f"🚀 **Технологии**:\n"
+        f"   • FLUX.1 Schnell\n"
+        f"   • FaceFusion\n"
+        f"   • MediaPipe\n"
+        f"   • Cloudflare Workers\n\n"
+        
+        f"📊 **Лимиты**:\n"
+        f"   • {config.DAILY_LIMIT} генераций/день\n"
+        f"   • Промпт до 1024 символов\n\n"
+        
+        f"💡 **Советы**:\n"
+        f"   • Используйте качественные фото\n"
+        f"   • Описывайте сцену детально\n\n"
+        
+        f"🔗 **Версия**: 1.0.0"
+    )
+    logger.info(f"🤖 About bot (text) requested by user {message.from_user.id}")
 
 # ------------------------------------------------------------
 # 🔘 ОБРАБОТЧИК "О БОТЕ" (CALLBACK — для inline кнопки)
