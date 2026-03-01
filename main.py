@@ -127,38 +127,109 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
 
 # ------------------------------------------------------------
-# Главное меню
+# 🔘 ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK)
 # ------------------------------------------------------------
-@dp.message(lambda msg: msg.text == "🔄 С заменой лица")
-async def create_photo_start(message: types.Message, state: FSMContext):
-    if not usage.check_limit(message.from_user.id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
+
+@dp.callback_query(lambda c: c.data == "mode_generate")
+async def create_photo_start(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if not usage.check_limit(user_id):
+        await callback.answer("❌ Дневной лимит исчерпан.", show_alert=True)
+        return
+    await callback.answer()
     await state.set_state(UserStates.waiting_for_face)
     await state.update_data(mode="generate")
-    await message.answer("Отправь фото с лицом (анфас, хорошее освещение).")
+    await callback.message.answer(
+        "📸 Отправь фото с лицом (анфас, хорошее освещение).\n"
+        "📝 Чем лучше фото, тем качественнее результат!"
+    )
+    logger.info(f"🔄 Mode generate started by user {user_id}")
 
-@dp.message(lambda msg: msg.text == "✨ Просто генерация")
-async def simple_generation_start(message: types.Message, state: FSMContext):
-    if not usage.check_limit(message.from_user.id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
+
+@dp.callback_query(lambda c: c.data == "mode_simple")
+async def simple_generation_start(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if not usage.check_limit(user_id):
+        await callback.answer("❌ Дневной лимит исчерпан.", show_alert=True)
+        return
+    await callback.answer()
     await state.set_state(UserStates.waiting_for_prompt_simple)
-    await message.answer("Напиши описание. 📝 Максимум 1024 символа.")
+    await callback.message.answer(
+        "✨ Напиши описание что сгенерировать.\n"
+        "📝 Максимум 1024 символа.\n"
+        "💡 Пример: красивый закат над горами, цифровое искусство"
+    )
+    logger.info(f"✨ Mode simple started by user {user_id}")
 
-@dp.message(lambda msg: msg.text == SWAP_OWN_BUTTON)
-async def swap_own_image_start(message: types.Message, state: FSMContext):
-    if not usage.check_limit(message.from_user.id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
+
+@dp.callback_query(lambda c: c.data == "mode_swap_own")
+async def swap_own_image_start(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if not usage.check_limit(user_id):
+        await callback.answer("❌ Дневной лимит исчерпан.", show_alert=True)
+        return
+    await callback.answer()
     await state.set_state(UserStates.waiting_for_face)
     await state.update_data(mode="swap_own")
-    await message.answer("Отправь фото лица которое нужно вставить.")
+    await callback.message.answer(
+        "🖼️ Отправь фото лица которое нужно вставить.\n"
+        "После этого отправь фото НА которое заменить."
+    )
+    logger.info(f"🖼️ Mode swap_own started by user {user_id}")
 
-@dp.message(lambda msg: msg.text == PHOTOSHOOT_BUTTON)
-async def photoshoot_start(message: types.Message, state: FSMContext):
-    if not usage.check_limit(message.from_user.id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
+
+@dp.callback_query(lambda c: c.data == "mode_photoshoot")
+async def photoshoot_start(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if not usage.check_limit(user_id):
+        await callback.answer("❌ Дневной лимит исчерпан.", show_alert=True)
+        return
+    await callback.answer()
     await state.set_state(UserStates.waiting_for_face_photoshoot)
     await state.update_data(mode="photoshoot")
-    await message.answer("📸 Отправь фото человека для фотосессии.")
+    await callback.message.answer(
+        "🎨 Отправь фото человека для фотосессии.\n"
+        "📝 Лицо должно быть чётко видно, анфас."
+    )
+    logger.info(f"🎨 Mode photoshoot started by user {user_id}")
+
+
+@dp.callback_query(lambda c: c.data == "stats")
+async def process_stats(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    await callback.answer()
+    remaining = config.DAILY_LIMIT - len(usage.usage.get(user_id, []))
+    used = config.DAILY_LIMIT - remaining
+    await callback.message.answer(
+        f"📊 **Ваша статистика**\n\n"
+        f"🔹 Использовано сегодня: {used}/{config.DAILY_LIMIT}\n"
+        f"🔹 Осталось: {remaining}\n"
+        f"🔹 Лимит обновится: завтра в 00:00 UTC",
+        reply_markup=get_main_menu()
+    )
+    logger.info(f"📊 Stats requested by user {user_id}: {used}/{config.DAILY_LIMIT}")
+
+
+@dp.callback_query(lambda c: c.data == "help")
+async def process_help(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.answer(
+        f"❓ **Помощь — {config.BOT_NAME}**\n\n"
+        f"🔄 **С заменой лица**:\n"
+        f"   1. Отправь фото лица\n"
+        f"   2. Выбери пол → стиль → тип кадра\n"
+        f"   3. Напиши промпт\n"
+        f"   4. Получи результат!\n\n"
+        f"✨ **Просто генерация**:\n"
+        f"   Напиши промпт → получи изображение\n\n"
+        f"🖼️ **Замена на своём фото**:\n"
+        f"   Отправь 2 фото → заменю лицо\n\n"
+        f"🎨 **ИИ фотосессия**:\n"
+        f"   Отправь фото + промпт → фотосессия\n\n"
+        f"📝 Промпт максимум 1024 символа.",
+        reply_markup=get_main_menu()
+    )
+    logger.info(f"❓ Help requested by user {callback.from_user.id}")
 
 # ------------------------------------------------------------
 # Получение фото
@@ -508,20 +579,42 @@ async def receive_target_for_swap(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)}"); await state.clear()
 
 # ------------------------------------------------------------
+# 🔍 ДЕБАГ: Ловим необработанные callback
+# ------------------------------------------------------------
+@dp.callback_query()
+async def debug_unhandled_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Ловит все callback, которые не обработались другими хендлерами"""
+    current_state = await state.get_state()
+    logger.warning(
+        f"⚠️ Unhandled callback: '{callback.data}' "
+        f"from user {callback.from_user.id} "
+        f"in state {current_state}"
+    )
+    await callback.answer("⚠️ Эта функция ещё в разработке или произошла ошибка", show_alert=False)
+
+# ------------------------------------------------------------
 # Запуск
 # ------------------------------------------------------------
 async def on_startup(dispatcher: Dispatcher):
-    await bot.set_webhook(config.WEBHOOK_URL)
-    logger.info(f"✅ Webhook set to {config.WEBHOOK_URL}")
     try:
-        await bot.send_message(config.ADMIN_ID, f"🚀 {config.BOT_NAME} запущен! ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
-    except:
-        pass
+        await bot.set_webhook(
+            config.WEBHOOK_URL,
+            allowed_updates=["message", "callback_query", "chat_member"]
+        )
+        logger.info(f"✅ Webhook set to {config.WEBHOOK_URL}")
+        try:
+            await bot.send_message(config.ADMIN_ID, f"🚀 {config.BOT_NAME} запущен! ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
+        except:
+            pass
+    except Exception as e:
+        logger.error(f"❌ Failed to set webhook: {e}")
 
 async def on_shutdown(dispatcher: Dispatcher):
+    # 🔥 НЕ удаляем вебхук — Telegram сам управляет им
     # await bot.delete_webhook()
     logger.info("🛑 Bot stopped")
-    await bot.session.close()  # 🔥 Закрываем сессию
+    if hasattr(bot, 'session') and bot.session:
+        await bot.session.close()
 
 def main():
     dp.startup.register(on_startup)
@@ -532,7 +625,11 @@ def main():
     webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
     
-    web.run_app(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    try:
+        web.run_app(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
