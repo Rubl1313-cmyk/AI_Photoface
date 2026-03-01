@@ -390,7 +390,7 @@ async def process_help_text(message: types.Message, state: FSMContext):
 
 @dp.message(lambda msg: msg.text == "🤖 О боте")
 async def process_about_text(message: types.Message, state: FSMContext):
-    """🔥 Обработчик кнопки нижнего меню "О боте""""
+    """🔥 Обработчик кнопки нижнего меню 'О боте'""
     await message.answer(
         f"🤖 **О боте {config.BOT_NAME}**\n\n"
         
