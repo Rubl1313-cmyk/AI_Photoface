@@ -26,7 +26,7 @@ from deep_translator import GoogleTranslator
 
 import config
 from states import UserStates
-from keyboards import get_main_menu, get_gender_keyboard, get_style_keyboard, get_shot_type_keyboard
+from keyboards import get_main_menu, get_gender_keyboard, get_style_keyboard, get_shot_type_keyboard, get_reply_keyboard
 from services.cloudflare import (
     generate_with_cloudflare,
     generate_inpainting_photoshoot,
@@ -44,14 +44,14 @@ MAX_PROMPT_LENGTH = 1024
 MAX_CAPTION_LENGTH = 1024
 
 DEFAULT_REALISTIC_PROMPT = (
-    "professional photography, photorealistic, sharp focus, 8k uhd, "
+    "looking into the camera, professional photography, photorealistic, sharp focus, 8k uhd, "
     "dslr, soft lighting, high quality, film grain, natural skin texture, "
     "realistic details, depth of field, bokeh, studio lighting"
 )
 
 STYLE_PROMPTS = {
-    "style_photorealistic": "photorealistic, professional photography",
-    "style_hyperrealistic": "hyperrealistic, ultra detailed, 8k resolution",
+    "style_photorealistic": "like a real photo, photorealistic, professional photography",
+    "style_hyperrealistic": "like a real photo, hyperrealistic, ultra detailed, 8k resolution",
     "style_cinematic": "cinematic shot, movie still, dramatic lighting",
     "style_art": "artistic, creative interpretation",
     "style_oil_painting": "oil painting, classical art style",
@@ -127,12 +127,17 @@ def validate_prompt_length(prompt: str, max_length: int = MAX_PROMPT_LENGTH):
 # ------------------------------------------------------------
 # /start
 # ------------------------------------------------------------
+# main.py — функция cmd_start:
+
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.set_state(UserStates.idle)
-    # Удаляем залипший ReplyKeyboard если есть
+    
+    # 🔥 Сначала удаляем старое меню (если есть)
     await message.answer("🔄 Обновляю интерфейс...", reply_markup=ReplyKeyboardRemove())
-    await message.answer(
+    
+    # 🔥 Отправляем InlineKeyboard (кнопки в сообщении)
+    inline_msg = await message.answer(
         f"👋 Привет! Я {config.BOT_NAME}\n\n"
         "🔄 **С заменой лица**: фото → генерация → твоё лицо\n"
         "✨ **Просто генерация**: изображение по тексту\n"
@@ -140,8 +145,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
         f"{PHOTOSHOOT_BUTTON}: фотосессия с твоим лицом\n\n"
         "📝 Промпт максимум 1024 символа.\n\n"
         "Выбери действие:",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu()  # InlineKeyboard
     )
+    
+    # 🔥 Отправляем ReplyKeyboard (кнопки внизу) — ОТДЕЛЬНЫМ СООБЩЕНИЕМ!
+    await message.answer(
+        "💡 Также можно использовать кнопки внизу 👇",
+        reply_markup=get_reply_keyboard()  # ReplyKeyboard
+    )
+    
+    logger.info(f"🚀 /start by user {message.from_user.id}")
 
 # ------------------------------------------------------------
 # ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK — inline кнопки)
@@ -540,7 +553,7 @@ async def proceed_to_generation(event, state: FSMContext):
     try:
         translator = GoogleTranslator(source='auto', target='en')
         translated = translator.translate(prompt)
-        gender_text = "man" if gender == "male" else "woman"
+        gender_text = "professional photo of man" if gender == "male" else "professional photo of woman"
         shot_text = "portrait, close-up" if shot_type == "portrait" else "full body shot"
         style_text = STYLE_PROMPTS.get(style, "")
         
@@ -669,10 +682,10 @@ async def proceed_photoshoot(event, state: FSMContext):
     try:
         translator = GoogleTranslator(source='auto', target='en')
         translated = translator.translate(prompt)
-        gender_text = "man" if gender == "male" else "woman"
+        gender_text = "professional photo of man" if gender == "male" else "professional photo of woman"
         shot_text = "portrait, close-up" if shot_type == "portrait" else "full body shot"
         
-        enhanced_prompt = f"{translated}, {gender_text}, {shot_text}, {DEFAULT_REALISTIC_PROMPT}, professional photo shoot"
+        enhanced_prompt = f"{translated}, {gender_text}, {shot_text}, {DEFAULT_REALISTIC_PROMPT}, professional photo shoot, like a real photo, looking into the camera"
         neg_prompt = "deformed, distorted, bad anatomy, blurry, ugly, watermark, low quality"
         
         logger.info(f"🎨 Photoshoot: '{prompt}' | gender={gender}, shot={shot_type}")
