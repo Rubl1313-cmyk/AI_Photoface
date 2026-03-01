@@ -8,8 +8,8 @@ load_dotenv()
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
-# 🔑 WEBHOOK (КРИТИЧЕСКИ ВАЖНО!)
-WEBHOOK_PATH = "/webhook"  # ← Путь в приложении
+# 🔑 WEBHOOK
+WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", f"https://ai-photoface.onrender.com{WEBHOOK_PATH}").strip()
 
 # 🔑 LIMITS
