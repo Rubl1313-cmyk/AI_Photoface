@@ -12,7 +12,8 @@ def get_main_menu():
     builder.button(text="✨ ИИ фотосессия", callback_data="mode_photoshoot")
     builder.button(text="📊 Моя статистика", callback_data="stats")
     builder.button(text="❓ Помощь", callback_data="help")
-    builder.adjust(1, 1, 1, 1, 2)
+    builder.button(text="🤖 О боте", callback_data="about")  # 🔥 ДОБАВЛЕНО!
+    builder.adjust(2, 2, 2, 1)  # 🔥 Изменено: 3 ряда по 2 кнопки + 1 кнопка
     return builder.as_markup()
 
 
