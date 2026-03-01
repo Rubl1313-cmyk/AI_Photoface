@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def get_main_menu():
-    """Главное меню"""
+    """Главное меню — INLINE кнопки с callback_data"""
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 С заменой лица", callback_data="mode_generate")
     builder.button(text="✨ Просто генерация", callback_data="mode_simple")
