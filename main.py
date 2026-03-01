@@ -395,7 +395,7 @@ async def process_help_text(message: types.Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "about")
 async def process_about(callback: types.CallbackQuery, state: FSMContext):
-    """🔥 Обработчик inline-кнопки "🤖 О боте""""
+    """Обработчик inline-кнопки 'О боте'"""
     await callback.answer()
     await callback.message.answer(
         f"🤖 **О боте {config.BOT_NAME}**\n\n"
