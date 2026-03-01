@@ -1,31 +1,32 @@
-import httpx
-import logging
+# services/face_fusion_api.py
+import httpx, logging
 from typing import Optional
-from config import FACEFUSION_URL
 
 logger = logging.getLogger(__name__)
 
 class FaceFusionClient:
-    def __init__(self, api_url: str = None):
-        self.api_url = api_url or FACEFUSION_URL
-        if not self.api_url:
-            raise ValueError("FACEFUSION_URL не задан")
-
+    def __init__(self, api_url: str):
+        self.api_url = api_url.rstrip("/")
+        logger.info(f"🔗 FaceFusionClient initialized: {self.api_url}")
+    
     async def swap_face(self, source_face_bytes: bytes, target_image_bytes: bytes) -> Optional[bytes]:
-        """
-        Отправляет два изображения на HF Space и возвращает результат замены лица.
-        Ожидается, что эндпоинт /swap принимает multipart/form-data с полями:
-          - source: файл с лицом
-          - target: файл с целевым изображением
-        Возвращает изображение в теле ответа.
-        """
-        url = f"{self.api_url}/swap"
-        files = {
-            "source": ("face.jpg", source_face_bytes, "image/jpeg"),
-            "target": ("target.jpg", target_image_bytes, "image/jpeg")
-        }
-        logger.info(f"🔄 Отправка запроса на FaceFusion API: {url}")
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, files=files)
-            resp.raise_for_status()
-            return resp.content
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                files = {
+                    "target": ("target.jpg", target_image_bytes, "image/jpeg"),
+                    "source": ("source.jpg", source_face_bytes, "image/jpeg")
+                }
+                logger.info(f"🔄 FaceFusion request (timeout=300s): {len(target_image_bytes)}B target, {len(source_face_bytes)}B source")
+                response = await client.post(f"{self.api_url}/swap", files=files)
+                if response.status_code == 200:
+                    logger.info(f"✅ Face swap success: {len(response.content)} bytes")
+                    return response.content
+                else:
+                    logger.error(f"❌ FaceFusion error {response.status_code}: {response.text[:200]}")
+                    return None
+        except httpx.TimeoutException:
+            logger.error("❌ FaceFusion timeout after 300s")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Face swap error: {type(e).__name__}: {e}")
+            return None
