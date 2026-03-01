@@ -1,10 +1,6 @@
-aiogram==3.25.0
+aiogram==3.4.1
 aiohttp==3.9.1
-aiofiles==23.2.1
-httpx==0.25.2
 deep-translator==1.11.4
 python-dotenv==1.0.0
-Pillow>=10.0.0
-mediapipe==0.10.32
-opencv-python-headless>=4.8.0
-numpy>=1.24.0
+Pillow==10.1.0
+httpx==0.25.2
