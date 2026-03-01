@@ -1,6 +1,6 @@
 # states.py
 """
-🎨 AI PhotoStudio — FSM States
+🎨 AI PhotoStudio — FSM States (FINAL)
 Все состояния для машины состояний бота
 """
 
@@ -16,11 +16,11 @@ class UserStates(StatesGroup):
     # ========================================================================
     # 🔹 РЕЖИМ "🔄 С ЗАМЕНОЙ ЛИЦА" (полный пайплайн)
     # ========================================================================
-    waiting_for_face = State()        # Ожидание фото лица пользователя
-    waiting_for_gender = State()      # Выбор пола (male/female)
-    waiting_for_style = State()       # Выбор стиля (photorealistic, anime, etc.)
-    waiting_for_shot_type = State()   # Выбор типа кадра (portrait/fullbody)
-    waiting_for_prompt = State()      # Ожидание текстового промпта
+    waiting_for_face = State()           # Ожидание фото лица пользователя
+    waiting_for_gender = State()         # Выбор пола (male/female)
+    waiting_for_style = State()          # Выбор стиля (photorealistic, anime, etc.)
+    waiting_for_shot_type = State()      # Выбор типа кадра (portrait/fullbody)
+    waiting_for_prompt = State()         # Ожидание текстового промпта
     
     # ========================================================================
     # 🔹 РЕЖИМ "✨ ПРОСТАЯ ГЕНЕРАЦИЯ" (без лица)
@@ -30,13 +30,15 @@ class UserStates(StatesGroup):
     # ========================================================================
     # 🔹 РЕЖИМ "🖼️ ЗАМЕНА ЛИЦА НА СВОЁМ ФОТО" (без генерации)
     # ========================================================================
-    waiting_for_target_swap = State()  # Ожидание второго фото (целевого)
+    waiting_for_target_swap = State()    # Ожидание второго фото (целевого)
     
     # ========================================================================
-    # 🔹 РЕЖИМ "✨ ИИ ФОТОСЕССИЯ" (inpainting с маской лица)
+    # 🔹 РЕЖИМ "✨ ИИ ФОТОСЕССИЯ" (inpainting с маской лица) — 🔥 НОВЫЕ СОСТОЯНИЯ!
     # ========================================================================
-    waiting_for_face_photoshoot = State()    # Ожидание фото для фотосессии
-    waiting_for_prompt_photoshoot = State()  # Ожидание промпта для фотосессии
+    waiting_for_face_photoshoot = State()        # Ожидание фото для фотосессии
+    waiting_for_gender_photoshoot = State()      # 🔥 Выбор пола для фотосессии
+    waiting_for_shot_type_photoshoot = State()   # 🔥 Выбор типа кадра для фотосессии
+    waiting_for_prompt_photoshoot = State()      # Ожидание промпта для фотосессии
     
     # ========================================================================
     # 🔹 ОБЩЕЕ СОСТОЯНИЕ
