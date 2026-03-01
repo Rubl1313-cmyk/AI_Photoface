@@ -41,11 +41,9 @@ PHOTOSHOOT_BUTTON = "✨ ИИ фотосессия"
 MAX_PROMPT_LENGTH = 1024
 MAX_CAPTION_LENGTH = 1024
 
-DEFAULT_REALISTIC_PROMPT = (
-    "Looking into the camera, professional photography, photorealistic, sharp focus, 8K UHD, DSLR,
+DEFAULT_REALISTIC_PROMPT = ("Looking into the camera, professional photography, photorealistic, sharp focus, 8K UHD, DSLR,
     soft lighting, high quality, film grain, natural skin texture, 
-    realistic details, depth of field, bokeh, studio lighting"
-)
+    realistic details, depth of field, bokeh, studio lighting")
 
 STYLE_PROMPTS = {
     "style_photorealistic": "Looks like a real photo, photorealistic, professional photography",
