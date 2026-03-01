@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-🎨 AI PhotoStudio — Main Bot File (COMPLETE & FIXED)
+🎨 AI PhotoStudio — Main Bot File (FINAL WORKING)
+- Все хендлеры используют callback_query
+- send_message() исправлен (reply() для Message)
+- Вебхук не удаляется при остановке
+- 22 стиля, выбор пола, типа кадра
+- Дефолтный промпт для реализма
 """
 
 import asyncio
@@ -85,23 +90,21 @@ facefusion_client = FaceFusionClient(api_url=config.FACEFUSION_URL)
 usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
 
 # ------------------------------------------------------------
-# Универсальные функции
-# ------------------------------------------------------------
-# ... (все импорты и константы как раньше) ...
-
-# ------------------------------------------------------------
-# Универсальные функции — 🔥 ИСПРАВЛЕНО!
+# 🔥 УНИВЕРСАЛЬНЫЕ ФУНКЦИИ — ИСПРАВЛЕНО!
 # ------------------------------------------------------------
 async def send_message(event: types.Message | types.CallbackQuery, text: str, reply_markup=None):
-    """Отправляет сообщение, корректно обрабатывая Message и CallbackQuery"""
+    """
+    Отправляет сообщение, корректно обрабатывая Message и CallbackQuery
+    🔥 ИСПРАВЛЕНО: reply() для Message, answer() для CallbackQuery
+    """
     if isinstance(event, types.CallbackQuery):
         await event.answer()  # Убираем "loading" у callback
         return await event.message.answer(text, reply_markup=reply_markup)
     else:
-        # 🔥 ИСПРАВЛЕНО: используем reply() вместо несуществующего answer()
-        return await event.reply(text, reply_markup=reply_markup)
+        return await event.reply(text, reply_markup=reply_markup)  # 🔥 reply() вместо answer()
 
 async def send_photo(event: types.Message | types.CallbackQuery, photo, caption: str = None, reply_markup=None):
+    """Отправляет фото с caption"""
     if caption:
         caption = truncate_caption(caption, max_length=MAX_CAPTION_LENGTH)
     if isinstance(event, types.CallbackQuery):
@@ -111,9 +114,11 @@ async def send_photo(event: types.Message | types.CallbackQuery, photo, caption:
         return await event.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
 
 async def edit_message(event: types.CallbackQuery, text: str, reply_markup=None):
+    """Редактирует сообщение"""
     return await event.message.edit_text(text, reply_markup=reply_markup)
 
 def validate_prompt_length(prompt: str, max_length: int = MAX_PROMPT_LENGTH) -> tuple[bool, str]:
+    """Проверяет длину промпта"""
     if not prompt or len(prompt.strip()) == 0:
         return False, "❌ Промпт не может быть пустым."
     if len(prompt) > max_length:
@@ -411,7 +416,8 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         if not image_bytes:
             raise Exception("Cloudflare error")
         
-        await edit_message(status_msg, "🔄 Заменяю лицо...") if isinstance(status_msg, types.CallbackQuery) else None
+        if isinstance(status_msg, types.CallbackQuery):
+            await edit_message(status_msg, "🔄 Заменяю лицо...")
         
         result_bytes = await facefusion_client.swap_face(
             source_face_bytes=source_face,
@@ -584,7 +590,7 @@ async def receive_target_for_swap(message: types.Message, state: FSMContext):
             await status_msg.edit_text(error_text)
         finally:
             await state.clear()
-            await message.answer("Что дальше?", reply_markup=get_main_menu())
+            await send_message(message, "Что дальше?", reply_markup=get_main_menu())
     except Exception as e:
         logger.exception("Error in receive_target_for_swap")
         await message.answer(f"❌ Ошибка: {str(e)}"); await state.clear()
