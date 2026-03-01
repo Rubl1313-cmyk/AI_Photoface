@@ -6,6 +6,7 @@
 - Вебхук не удаляется при остановке
 - 22 стиля, выбор пола, типа кадра
 - Дефолтный промпт для реализма
+- 🔥 УДАЛЕН debug_unhandled_callback (перехватывал все callback'и)
 """
 
 import asyncio
@@ -90,18 +91,15 @@ facefusion_client = FaceFusionClient(api_url=config.FACEFUSION_URL)
 usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
 
 # ------------------------------------------------------------
-# 🔥 УНИВЕРСАЛЬНЫЕ ФУНКЦИИ — ИСПРАВЛЕНО!
+# 🔥 УНИВЕРСАЛЬНЫЕ ФУНКЦИИ
 # ------------------------------------------------------------
 async def send_message(event: types.Message | types.CallbackQuery, text: str, reply_markup=None):
-    """
-    Отправляет сообщение, корректно обрабатывая Message и CallbackQuery
-    🔥 ИСПРАВЛЕНО: reply() для Message, answer() для CallbackQuery
-    """
+    """Отправляет сообщение, корректно обрабатывая Message и CallbackQuery"""
     if isinstance(event, types.CallbackQuery):
-        await event.answer()  # Убираем "loading" у callback
+        await event.answer()
         return await event.message.answer(text, reply_markup=reply_markup)
     else:
-        return await event.reply(text, reply_markup=reply_markup)  # 🔥 reply() вместо answer()
+        return await event.reply(text, reply_markup=reply_markup)
 
 async def send_photo(event: types.Message | types.CallbackQuery, photo, caption: str = None, reply_markup=None):
     """Отправляет фото с caption"""
@@ -143,7 +141,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
 
 # ------------------------------------------------------------
-# 🔘 ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK)
+# 🔘 ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK) — БЕЗ ФИЛЬТРОВ СОСТОЯНИЯ
 # ------------------------------------------------------------
 
 @dp.callback_query(lambda c: c.data == "mode_generate")
@@ -596,21 +594,7 @@ async def receive_target_for_swap(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)}"); await state.clear()
 
 # ------------------------------------------------------------
-# 🔍 ДЕБАГ: Ловим необработанные callback
-# ------------------------------------------------------------
-@dp.callback_query()
-async def debug_unhandled_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Ловит все callback, которые не обработались другими хендлерами"""
-    current_state = await state.get_state()
-    logger.warning(
-        f"⚠️ Unhandled callback: '{callback.data}' "
-        f"from user {callback.from_user.id} "
-        f"in state {current_state}"
-    )
-    await callback.answer("⚠️ Эта функция ещё в разработке или произошла ошибка", show_alert=False)
-
-# ------------------------------------------------------------
-# Запуск
+# Запуск — 🔥 БЕЗ debug_unhandled_callback!
 # ------------------------------------------------------------
 async def on_startup(dispatcher: Dispatcher):
     try:
@@ -628,7 +612,6 @@ async def on_startup(dispatcher: Dispatcher):
 
 async def on_shutdown(dispatcher: Dispatcher):
     # 🔥 НЕ удаляем вебхук — Telegram сам управляет им
-    # await bot.delete_webhook()
     logger.info("🛑 Bot stopped")
     if hasattr(bot, 'session') and bot.session:
         await bot.session.close()
