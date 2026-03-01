@@ -389,44 +389,45 @@ async def process_help_text(message: types.Message, state: FSMContext):
     logger.info(f"❓ Help (text) by user {message.from_user.id}")
 
 
-@dp.message(lambda msg: msg.text == "🤖 О боте")
-async def process_about_text(message: types.Message, state: FSMContext):
-    """🔥 НОВЫЙ хендлер: О боте"""
-    await message.answer(
+# ------------------------------------------------------------
+# 🔘 ОБРАБОТЧИК "О БОТЕ" (CALLBACK — для inline кнопки)
+# ------------------------------------------------------------
+
+@dp.callback_query(lambda c: c.data == "about")
+async def process_about(callback: types.CallbackQuery, state: FSMContext):
+    """🔥 Обработчик inline-кнопки "🤖 О боте""""
+    await callback.answer()
+    await callback.message.answer(
         f"🤖 **О боте {config.BOT_NAME}**\n\n"
         
         f"🎨 **Что это**:\n"
         f"   Профессиональный бот для генерации изображений "
-        f"с использованием передовых ИИ-моделей (FLUX.1, FaceFusion).\n\n"
+        f"с использованием FLUX.1 и FaceFusion.\n\n"
         
         f"✨ **Возможности**:\n"
         f"   • 🔄 Генерация с заменой лица\n"
-        f"   • 🎨 Простая генерация по тексту\n"
-        f"   • 🖼️ Замена лица на ваших фото\n"
-        f"   • 📸 ИИ фотосессии с сохранением лица\n\n"
+        f"   • 🎨 Генерация по тексту\n"
+        f"   • 🖼️ Замена лица на фото\n"
+        f"   • 📸 ИИ фотосессии\n\n"
         
         f"🚀 **Технологии**:\n"
-        f"   • FLUX.1 Schnell — генерация изображений\n"
-        f"   • FaceFusion — замена лиц\n"
-        f"   • MediaPipe — детекция лиц\n"
-        f"   • Cloudflare Workers — быстрая обработка\n\n"
+        f"   • FLUX.1 Schnell\n"
+        f"   • FaceFusion\n"
+        f"   • MediaPipe\n"
+        f"   • Cloudflare Workers\n\n"
         
         f"📊 **Лимиты**:\n"
-        f"   • {config.DAILY_LIMIT} генераций в день\n"
-        f"   • Промпт до 1024 символов\n"
-        f"   • Лимит обновляется ежедневно в 00:00 UTC\n\n"
+        f"   • {config.DAILY_LIMIT} генераций/день\n"
+        f"   • Промпт до 1024 символов\n\n"
         
         f"💡 **Советы**:\n"
         f"   • Используйте качественные фото\n"
-        f"   • Описывайте сцену детально\n"
-        f"   • Избегайте теней на лице\n\n"
+        f"   • Описывайте сцену детально\n\n"
         
-        f"🔗 **Версия**: 1.0.0\n"
-        f"📅 **Запущен**: {datetime.now().strftime('%Y')}\n\n"
-        
-        f"💬 **Есть вопросы?** Пишите админу!"
+        f"🔗 **Версия**: 1.0.0",
+        reply_markup=get_main_menu()
     )
-    logger.info(f"🤖 About bot requested by user {message.from_user.id}")
+    logger.info(f"🤖 About bot (callback) requested by user {callback.from_user.id}")
 
 # Получение фото
 # ------------------------------------------------------------
