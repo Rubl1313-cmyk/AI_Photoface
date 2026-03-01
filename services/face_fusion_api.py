@@ -1,5 +1,6 @@
 # services/face_fusion_api.py
-import httpx, logging
+import httpx
+import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
