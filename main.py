@@ -3,10 +3,10 @@
 🎨 AI PhotoStudio — Main Bot File (FINAL WORKING)
 - Все хендлеры используют callback_query
 - send_message() исправлен (reply() для Message)
+- edit_message() передаёт reply_markup
 - Вебхук не удаляется при остановке
 - 22 стиля, выбор пола, типа кадра
 - Дефолтный промпт для реализма
-- 🔥 УДАЛЕН debug_unhandled_callback (перехватывал все callback'и)
 """
 
 import asyncio
@@ -91,15 +91,17 @@ facefusion_client = FaceFusionClient(api_url=config.FACEFUSION_URL)
 usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
 
 # ------------------------------------------------------------
-# 🔥 УНИВЕРСАЛЬНЫЕ ФУНКЦИИ
+# 🔥 УНИВЕРСАЛЬНЫЕ ФУНКЦИИ — ИСПРАВЛЕНО!
 # ------------------------------------------------------------
 async def send_message(event: types.Message | types.CallbackQuery, text: str, reply_markup=None):
-    """Отправляет сообщение, корректно обрабатывая Message и CallbackQuery"""
+    """
+    Отправляет НОВОЕ сообщение, корректно обрабатывая Message и CallbackQuery
+    """
     if isinstance(event, types.CallbackQuery):
-        await event.answer()
+        await event.answer()  # Убираем "loading" у callback
         return await event.message.answer(text, reply_markup=reply_markup)
     else:
-        return await event.reply(text, reply_markup=reply_markup)
+        return await event.reply(text, reply_markup=reply_markup)  # 🔥 reply() для Message
 
 async def send_photo(event: types.Message | types.CallbackQuery, photo, caption: str = None, reply_markup=None):
     """Отправляет фото с caption"""
@@ -112,8 +114,14 @@ async def send_photo(event: types.Message | types.CallbackQuery, photo, caption:
         return await event.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
 
 async def edit_message(event: types.CallbackQuery, text: str, reply_markup=None):
-    """Редактирует сообщение"""
-    return await event.message.edit_text(text, reply_markup=reply_markup)
+    """
+    Редактирует сообщение + обновляет клавиатуру
+    🔥 ИСПРАВЛЕНО: передаёт reply_markup если он есть
+    """
+    if reply_markup is not None:
+        return await event.message.edit_text(text, reply_markup=reply_markup)
+    else:
+        return await event.message.edit_text(text)
 
 def validate_prompt_length(prompt: str, max_length: int = MAX_PROMPT_LENGTH) -> tuple[bool, str]:
     """Проверяет длину промпта"""
@@ -141,7 +149,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
 
 # ------------------------------------------------------------
-# 🔘 ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK) — БЕЗ ФИЛЬТРОВ СОСТОЯНИЯ
+# 🔘 ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ (CALLBACK)
 # ------------------------------------------------------------
 
 @dp.callback_query(lambda c: c.data == "mode_generate")
@@ -414,8 +422,11 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
         if not image_bytes:
             raise Exception("Cloudflare error")
         
+        # 🔥 Обновляем статус + показываем меню сразу
         if isinstance(status_msg, types.CallbackQuery):
-            await edit_message(status_msg, "🔄 Заменяю лицо...")
+            await edit_message(status_msg, "✅ Готово! Что дальше?", reply_markup=get_main_menu())
+        else:
+            await status_msg.delete()
         
         result_bytes = await facefusion_client.swap_face(
             source_face_bytes=source_face,
@@ -425,8 +436,6 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
             raise Exception("FaceFusion error")
         
         caption = truncate_caption(f"✅ Готово!\n🎨 Промпт: {prompt}\n✨ Стиль: {style}")
-        if isinstance(status_msg, types.Message):
-            await status_msg.delete()
         await send_photo(event, BufferedInputFile(result_bytes, filename="result.jpg"), caption=caption)
         
     except Exception as e:
@@ -438,7 +447,7 @@ async def proceed_to_generation(event: types.Message | types.CallbackQuery, stat
             await send_message(event, error_text)
     finally:
         await state.clear()
-        await send_message(event, "Что дальше?", reply_markup=get_main_menu())
+        # 🔥 Меню уже показано выше, не дублируем
 
 # ------------------------------------------------------------
 # 🔥 Простая генерация
@@ -471,9 +480,13 @@ async def proceed_simple_generation(event: types.Message | types.CallbackQuery, 
         if not image_bytes:
             raise Exception("Cloudflare error")
         
-        caption = truncate_caption(f"✅ Готово!\n🎨 Промпт: {prompt}")
-        if isinstance(status_msg, types.Message):
+        # 🔥 Обновляем статус + показываем меню сразу
+        if isinstance(status_msg, types.CallbackQuery):
+            await edit_message(status_msg, "✅ Готово! Что дальше?", reply_markup=get_main_menu())
+        else:
             await status_msg.delete()
+        
+        caption = truncate_caption(f"✅ Готово!\n🎨 Промпт: {prompt}")
         await send_photo(event, BufferedInputFile(image_bytes, filename="result.jpg"), caption=caption)
         
     except Exception as e:
@@ -485,7 +498,6 @@ async def proceed_simple_generation(event: types.Message | types.CallbackQuery, 
             await send_message(event, error_text)
     finally:
         await state.clear()
-        await send_message(event, "Что дальше?", reply_markup=get_main_menu())
 
 # ------------------------------------------------------------
 # 🔥 ИИ фотосессия
@@ -529,9 +541,13 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
         if not result_bytes:
             raise Exception("Cloudflare error")
         
-        caption = truncate_caption(f"✅ Готово!\n🎨 Промпт: {prompt}")
-        if isinstance(status_msg, types.Message):
+        # 🔥 Обновляем статус + показываем меню сразу
+        if isinstance(status_msg, types.CallbackQuery):
+            await edit_message(status_msg, "✅ Готово! Что дальше?", reply_markup=get_main_menu())
+        else:
             await status_msg.delete()
+        
+        caption = truncate_caption(f"✅ Готово!\n🎨 Промпт: {prompt}")
         await send_photo(event, BufferedInputFile(result_bytes, filename="photoshoot.jpg"), caption=caption)
         
     except Exception as e:
@@ -543,7 +559,6 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
             await send_message(event, error_text)
     finally:
         await state.clear()
-        await send_message(event, "Что дальше?", reply_markup=get_main_menu())
 
 # ------------------------------------------------------------
 # 🔥 Замена лица на своём фото
@@ -582,19 +597,19 @@ async def receive_target_for_swap(message: types.Message, state: FSMContext):
             caption = truncate_caption("✅ Готово! Лицо заменено. 🎭")
             await status_msg.delete()
             await message.answer_photo(photo=BufferedInputFile(result_bytes, filename="swapped.jpg"), caption=caption)
+            await send_message(message, "Что дальше?", reply_markup=get_main_menu())
         except Exception as e:
             logger.exception("Face swap error")
             error_text = truncate_caption(f"❌ Ошибка: {str(e)[:150]}")
             await status_msg.edit_text(error_text)
         finally:
             await state.clear()
-            await send_message(message, "Что дальше?", reply_markup=get_main_menu())
     except Exception as e:
         logger.exception("Error in receive_target_for_swap")
         await message.answer(f"❌ Ошибка: {str(e)}"); await state.clear()
 
 # ------------------------------------------------------------
-# Запуск — 🔥 БЕЗ debug_unhandled_callback!
+# Запуск
 # ------------------------------------------------------------
 async def on_startup(dispatcher: Dispatcher):
     try:
