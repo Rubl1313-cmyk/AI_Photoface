@@ -253,61 +253,19 @@ async def process_help(callback: types.CallbackQuery, state: FSMContext):
     )
     logger.info(f"❓ Help requested by user {callback.from_user.id}")
 # ------------------------------------------------------------
-# 🔘 ОБРАБОТЧИКИ НИЖНЕГО МЕНЮ (TEXT)
+# 🔘 ОБРАБОТЧИКИ НИЖНЕГО МЕНЮ (TEXT) — 🔥 УЛУЧШЕНО!
 # ------------------------------------------------------------
 
 @dp.message(lambda msg: msg.text == "🔄 С заменой лица")
 async def create_photo_start_text(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    if not usage.check_limit(user_id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
-    await state.set_state(UserStates.waiting_for_face)
-    await state.update_data(mode="generate")
-    await message.answer("📸 Отправь фото с лицом (анфас, хорошее освещение).")
-    logger.info(f"🔄 Mode generate (text) by user {user_id}")
-
-@dp.message(lambda msg: msg.text == "✨ Просто генерация")
-async def simple_generation_start_text(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    if not usage.check_limit(user_id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
-    await state.set_state(UserStates.waiting_for_prompt_simple)
-    await message.answer("✨ Напиши описание что сгенерировать.\n📝 Максимум 1024 символа.")
-    logger.info(f"✨ Mode simple (text) by user {user_id}")
-
-@dp.message(lambda msg: msg.text == "🖼️ Замена лица на своём изображении")
-async def swap_own_image_start_text(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    if not usage.check_limit(user_id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
-    await state.set_state(UserStates.waiting_for_face)
-    await state.update_data(mode="swap_own")
-    await message.answer("🖼️ Отправь фото лица которое нужно вставить.")
-    logger.info(f"🖼️ Mode swap_own (text) by user {user_id}")
-
-@dp.message(lambda msg: msg.text == "✨ ИИ фотосессия")
-async def photoshoot_start_text(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    if not usage.check_limit(user_id):
-        await message.answer("❌ Дневной лимит исчерпан."); return
-    await state.set_state(UserStates.waiting_for_face_photoshoot)
-    await state.update_data(mode="photoshoot")
-    await message.answer("🎨 Отправь фото человека для фотосессии.")
-    logger.info(f"🎨 Mode photoshoot (text) by user {user_id}")
-
-@dp.message(lambda msg: msg.text == "📊 Моя статистика")
-async def process_stats_text(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    remaining = config.DAILY_LIMIT - len(usage.usage.get(user_id, []))
-    used = config.DAILY_LIMIT - remaining
-    await message.answer(f"📊 **Статистика**\n\nИспользовано: {used}/{config.DAILY_LIMIT}\nОсталось: {remaining}")
-    logger.info(f"📊 Stats (text) by user {user_id}: {used}/{config.DAILY_LIMIT}")
-
-@dp.message(lambda msg: msg.text == "❓ Помощь")
-async def process_help_text(message: types.Message, state: FSMContext):
-    await message.answer(f"❓ **Помощь**\n\nПромпт максимум 1024 символа.")
-    logger.info(f"❓ Help (text) by user {message.from_user.id}")
-# ------------------------------------------------------------
+…        
+        f"🔗 **Версия**: 1.0.0\n"
+        f"📅 **Запущен**: {datetime.now().strftime('%Y')}\n\n"
+        
+        f"💬 **Есть вопросы?** Пишите админу!"
+    )
+    logger.info(f"🤖 About bot requested by user {message.from_user.id}")
 # Получение фото
 # ------------------------------------------------------------
 @dp.message(UserStates.waiting_for_face, F.photo | F.document)
