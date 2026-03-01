@@ -704,7 +704,7 @@ async def proceed_photoshoot(event: types.Message | types.CallbackQuery, state: 
         gender_text = "man" if gender == "male" else "woman"
         shot_text = "portrait, close-up" if shot_type == "portrait" else "full body shot"
         
-        enhanced_prompt = f"{translated}, {gender_text}, {shot_text}, {DEFAULT_REALISTIC_PROMPT}, professional photo shoot, looking into camera"
+        enhanced_prompt = f"{translated}, {gender_text}, {shot_text}, {DEFAULT_REALISTIC_PROMPT}, professional photo shoot, looking into the camera"
         neg_prompt = "deformed, distorted, bad anatomy, blurry, ugly, watermark, low quality"
         
         logger.info(f"🎨 Photoshoot: '{prompt}' | gender={gender}, shot={shot_type}")
