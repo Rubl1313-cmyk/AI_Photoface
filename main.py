@@ -250,7 +250,35 @@ async def process_help(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=get_main_menu()
     )
     logger.info(f"❓ Help requested by user {callback.from_user.id}")
-# ... (всё что было до хендлеров нижнего меню) ...
+    @dp.callback_query(lambda c: c.data == "about")
+async def process_about(callback: types.CallbackQuery, state: FSMContext):
+    # Обработчик inline-кнопки "О боте"
+    await callback.answer()
+    await callback.message.answer(
+        f"🤖 **О боте {config.BOT_NAME}**\n\n"
+        f"🎨 **Что это**:\n"
+        f"   Профессиональный бот для генерации изображений "
+        f"с использованием FLUX.1 и FaceFusion.\n\n"
+        f"✨ **Возможности**:\n"
+        f"   • 🔄 Генерация с заменой лица\n"
+        f"   • 🎨 Генерация по тексту\n"
+        f"   • 🖼️ Замена лица на фото\n"
+        f"   • 📸 ИИ фотосессии\n\n"
+        f"🚀 **Технологии**:\n"
+        f"   • FLUX.1 Schnell\n"
+        f"   • FaceFusion\n"
+        f"   • MediaPipe\n"
+        f"   • Cloudflare Workers\n\n"
+        f"📊 **Лимиты**:\n"
+        f"   • {config.DAILY_LIMIT} генераций/день\n"
+        f"   • Промпт до 1024 символов\n\n"
+        f"💡 **Советы**:\n"
+        f"   • Используйте качественные фото\n"
+        f"   • Описывайте сцену детально\n\n"
+        f"🔗 **Версия**: 1.0.0",
+        reply_markup=get_main_menu()
+    )
+    logger.info(f"🤖 About bot (callback) by user {callback.from_user.id}")
 
 
 # ------------------------------------------------------------
@@ -390,77 +418,32 @@ async def process_help_text(message: types.Message, state: FSMContext):
 
 @dp.message(lambda msg: msg.text == "🤖 О боте")
 async def process_about_text(message: types.Message, state: FSMContext):
-    """🔥 Обработчик кнопки нижнего меню 'О боте'""
+    # Обработчик кнопки нижнего меню "О боте"
     await message.answer(
         f"🤖 **О боте {config.BOT_NAME}**\n\n"
-        
         f"🎨 **Что это**:\n"
         f"   Профессиональный бот для генерации изображений "
         f"с использованием FLUX.1 и FaceFusion.\n\n"
-        
         f"✨ **Возможности**:\n"
         f"   • 🔄 Генерация с заменой лица\n"
         f"   • 🎨 Генерация по тексту\n"
         f"   • 🖼️ Замена лица на фото\n"
         f"   • 📸 ИИ фотосессии\n\n"
-        
         f"🚀 **Технологии**:\n"
         f"   • FLUX.1 Schnell\n"
         f"   • FaceFusion\n"
         f"   • MediaPipe\n"
         f"   • Cloudflare Workers\n\n"
-        
         f"📊 **Лимиты**:\n"
         f"   • {config.DAILY_LIMIT} генераций/день\n"
         f"   • Промпт до 1024 символов\n\n"
-        
         f"💡 **Советы**:\n"
         f"   • Используйте качественные фото\n"
         f"   • Описывайте сцену детально\n\n"
-        
         f"🔗 **Версия**: 1.0.0"
     )
-    logger.info(f"🤖 About bot (text) requested by user {message.from_user.id}")
+    logger.info(f"🤖 About bot (text) by user {message.from_user.id}")
 
-# ------------------------------------------------------------
-# 🔘 ОБРАБОТЧИК "О БОТЕ" (CALLBACK — для inline кнопки)
-# ------------------------------------------------------------
-
-@dp.callback_query(lambda c: c.data == "about")
-async def process_about(callback: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'О боте'"""
-    await callback.answer()
-    await callback.message.answer(
-        f"🤖 **О боте {config.BOT_NAME}**\n\n"
-        
-        f"🎨 **Что это**:\n"
-        f"   Профессиональный бот для генерации изображений "
-        f"с использованием FLUX.1 и FaceFusion.\n\n"
-        
-        f"✨ **Возможности**:\n"
-        f"   • 🔄 Генерация с заменой лица\n"
-        f"   • 🎨 Генерация по тексту\n"
-        f"   • 🖼️ Замена лица на фото\n"
-        f"   • 📸 ИИ фотосессии\n\n"
-        
-        f"🚀 **Технологии**:\n"
-        f"   • FLUX.1 Schnell\n"
-        f"   • FaceFusion\n"
-        f"   • MediaPipe\n"
-        f"   • Cloudflare Workers\n\n"
-        
-        f"📊 **Лимиты**:\n"
-        f"   • {config.DAILY_LIMIT} генераций/день\n"
-        f"   • Промпт до 1024 символов\n\n"
-        
-        f"💡 **Советы**:\n"
-        f"   • Используйте качественные фото\n"
-        f"   • Описывайте сцену детально\n\n"
-        
-        f"🔗 **Версия**: 1.0.0",
-        reply_markup=get_main_menu()
-    )
-    logger.info(f"🤖 About bot (callback) requested by user {callback.from_user.id}")
 
 # Получение фото
 # ------------------------------------------------------------
