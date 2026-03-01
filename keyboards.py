@@ -1,5 +1,5 @@
 # keyboards.py
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -12,8 +12,8 @@ def get_main_menu():
     builder.button(text="✨ ИИ фотосессия", callback_data="mode_photoshoot")
     builder.button(text="📊 Моя статистика", callback_data="stats")
     builder.button(text="❓ Помощь", callback_data="help")
-    builder.button(text="🤖 О боте", callback_data="about")  # 🔥 ДОБАВЛЕНО!
-    builder.adjust(2, 2, 2, 1)  # 🔥 Изменено: 3 ряда по 2 кнопки + 1 кнопка
+    builder.button(text="🤖 О боте", callback_data="about")
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -74,3 +74,30 @@ def get_shot_type_keyboard():
     builder.button(text="🚶 В полный рост", callback_data="shot_fullbody")
     builder.adjust(2)
     return builder.as_markup()
+
+
+def get_reply_keyboard():
+    """
+    🔥 НОВОЕ: Нижнее меню — ReplyKeyboard (серые кнопки внизу)
+    Эти кнопки отправляют текст, а не callback_data
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="🔄 С заменой лица"),
+                KeyboardButton(text="✨ Просто генерация")
+            ],
+            [
+                KeyboardButton(text="🖼️ Замена лица на своём изображении"),
+                KeyboardButton(text="✨ ИИ фотосессия")
+            ],
+            [
+                KeyboardButton(text="📊 Моя статистика"),
+                KeyboardButton(text="❓ Помощь"),
+                KeyboardButton(text="🤖 О боте")
+            ]
+        ],
+        resize_keyboard=True,  # Кнопки подстраиваются под размер экрана
+        one_time_keyboard=False,  # Меню не исчезает после нажатия
+        input_field_placeholder="Выберите действие 👇"  # Подсказка в поле ввода
+    )
