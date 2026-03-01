@@ -87,17 +87,28 @@ usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
 # ------------------------------------------------------------
 # Универсальные функции
 # ------------------------------------------------------------
+# ... (все импорты и константы как раньше) ...
+
+# ------------------------------------------------------------
+# Универсальные функции — 🔥 ИСПРАВЛЕНО!
+# ------------------------------------------------------------
 async def send_message(event: types.Message | types.CallbackQuery, text: str, reply_markup=None):
+    """Отправляет сообщение, корректно обрабатывая Message и CallbackQuery"""
     if isinstance(event, types.CallbackQuery):
+        await event.answer()  # Убираем "loading" у callback
         return await event.message.answer(text, reply_markup=reply_markup)
-    return await event.answer(text, reply_markup=reply_markup)
+    else:
+        # 🔥 ИСПРАВЛЕНО: используем reply() вместо несуществующего answer()
+        return await event.reply(text, reply_markup=reply_markup)
 
 async def send_photo(event: types.Message | types.CallbackQuery, photo, caption: str = None, reply_markup=None):
     if caption:
         caption = truncate_caption(caption, max_length=MAX_CAPTION_LENGTH)
     if isinstance(event, types.CallbackQuery):
+        await event.answer()
         return await event.message.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
-    return await event.answer_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+    else:
+        return await event.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
 
 async def edit_message(event: types.CallbackQuery, text: str, reply_markup=None):
     return await event.message.edit_text(text, reply_markup=reply_markup)
