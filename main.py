@@ -42,14 +42,14 @@ MAX_PROMPT_LENGTH = 1024
 MAX_CAPTION_LENGTH = 1024
 
 DEFAULT_REALISTIC_PROMPT = (
-    "professional photography, photorealistic, sharp focus, 8k uhd, "
-    "dslr, soft lighting, high quality, film grain, natural skin texture, "
-    "realistic details, depth of field, bokeh, studio lighting"
+    "Looking into the camera, professional photography, photorealistic, sharp focus, 8K UHD, DSLR,
+    soft lighting, high quality, film grain, natural skin texture, 
+    realistic details, depth of field, bokeh, studio lighting"
 )
 
 STYLE_PROMPTS = {
-    "style_photorealistic": "photorealistic, professional photography",
-    "style_hyperrealistic": "hyperrealistic, ultra detailed, 8k resolution",
+    "style_photorealistic": "Looks like a real photo, photorealistic, professional photography",
+    "style_hyperrealistic": "Looks like a real photo, hyperrealistic, ultra detailed, 8k resolution",
     "style_cinematic": "cinematic shot, movie still, dramatic lighting",
     "style_art": "artistic, creative interpretation",
     "style_oil_painting": "oil painting, classical art style",
