@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: ai-photo-studio
+    name: ai-photo-studio-pro
     env: python
     plan: free
     region: oregon
@@ -14,13 +14,13 @@ services:
       - key: CF_API_KEY
         sync: false
       - key: DAILY_LIMIT
-        value: 50
+        value: "50"
       - key: PORT
-        value: 8080
+        value: "8080"
       - key: FACEFUSION_URL
-        value: http://localhost:8081
+        value: "http://localhost:8081"
       - key: WEBHOOK_PATH
-        value: /webhook
+        value: "/webhook"
     disk:
       name: bot-data
       mountPath: /data
