@@ -1,8 +1,9 @@
 #!/bin/bash
 echo "=========================================="
-echo "🚀 AI PhotoStudio - Запуск (Render.com)"
+echo "🚀 AI PhotoStudio Pro v2.0 - Ultra Realistic"
 echo "=========================================="
 echo "📅 Дата: $(date)"
+echo " Phoenix 1.0 + Enhanced FaceFusion"
 echo "=========================================="
 
 # Устанавливаем переменные окружения если не заданы
