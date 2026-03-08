@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data (не включаем в образ)
+data/
+*.json
+.env
+.env.local
+
+# Render (не нужно для HF)
+render.yaml
+start.sh
+
+# Documentation
+README.md
+*.md
+docs/
