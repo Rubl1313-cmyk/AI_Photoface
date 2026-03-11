@@ -120,16 +120,24 @@ async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
-# Обработчики фото
-@dp.message(F.photo)
+# Обработчики фото и документов
+@dp.message(F.photo | F.document)
 async def handle_photo_upload(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     
     # AI Photoshoot - загрузка фото
     if current_state == UserStates.waiting_for_photoshoot_face:
-        photo_file = await bot.get_file(message.photo[-1].file_id)
-        photo_bytes = await bot.download_file(photo_file.file_path)
-        await state.update_data(photoshoot_face=photo_bytes.read())
+        if message.photo:
+            photo_file = await bot.get_file(message.photo[-1].file_id)
+            photo_bytes = await bot.download_file(photo_file.file_path)
+            await state.update_data(photoshoot_face=photo_bytes.read())
+        elif message.document and message.document.mime_type and message.document.mime_type.startswith('image/'):
+            doc_file = await bot.get_file(message.document.file_id)
+            doc_bytes = await bot.download_file(doc_file.file_path)
+            await state.update_data(photoshoot_face=doc_bytes.read())
+        else:
+            await message.answer("❌ Пожалуйста, отправьте фото или изображение")
+            return
         
         await state.set_state(UserStates.selecting_photoshoot_style)
         await message.answer(
@@ -141,9 +149,17 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
     
     # AI Styles - загрузка фото
     elif current_state == UserStates.waiting_for_ai_styles_face:
-        photo_file = await bot.get_file(message.photo[-1].file_id)
-        photo_bytes = await bot.download_file(photo_file.file_path)
-        await state.update_data(ai_styles_face=photo_bytes.read())
+        if message.photo:
+            photo_file = await bot.get_file(message.photo[-1].file_id)
+            photo_bytes = await bot.download_file(photo_file.file_path)
+            await state.update_data(ai_styles_face=photo_bytes.read())
+        elif message.document and message.document.mime_type and message.document.mime_type.startswith('image/'):
+            doc_file = await bot.get_file(message.document.file_id)
+            doc_bytes = await bot.download_file(doc_file.file_path)
+            await state.update_data(ai_styles_face=doc_bytes.read())
+        else:
+            await message.answer("❌ Пожалуйста, отправьте фото или изображение")
+            return
         
         await state.set_state(UserStates.selecting_ai_styles_style)
         await message.answer(
