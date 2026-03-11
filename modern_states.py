@@ -1,22 +1,25 @@
-# 🚀 Современные состояния для AI PhotoStudio 2.0
+# Состояния для AI PhotoStudio 2.0
 from aiogram.fsm.state import State, StatesGroup
 
 class UserStates(StatesGroup):
-    # Основное состояние
     idle = State()
     
-    # AI Фотосессия
-    waiting_for_face_photoshoot = State()
+    # AI Photoshoot - фотореализм с лицом
+    waiting_for_photoshoot_face = State()
     selecting_photoshoot_style = State()
-    waiting_for_custom_prompt = State()
+    selecting_photoshoot_format = State()
+    waiting_for_photoshoot_prompt = State()
     generating_photoshoot = State()
     
-    # Генерация по промпту
-    waiting_for_prompt_generate = State()
-    generating = State()
+    # AI Styles - референс + стили
+    waiting_for_ai_styles_face = State()
+    selecting_ai_styles_style = State()
+    waiting_for_ai_styles_prompt = State()
+    generating_ai_styles = State()
     
-    # Замена лица
-    waiting_for_target_swap = State()
+    # AIMage - простая генерация
+    waiting_for_ai_image_prompt = State()
+    generating_ai_image = State()
     
     # Общие состояния
     processing = State()

@@ -1,60 +1,65 @@
-# 🚀 Современные клавиатуры для AI PhotoStudio 2.0
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+# Клавиатуры для AI PhotoStudio 2.0
+from aiogram.types import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
 
-def get_modern_main_menu():
-    """Современное главное меню"""
+def get_main_menu():
+    """Главное меню с 3 категориями"""
     builder = InlineKeyboardBuilder()
     
     # Основные функции
-    builder.button(text="📸 AI Фотосессия", callback_data="photoshoot")
-    builder.button(text="🎨 Генерация по промпту", callback_data="generate")
-    builder.button(text="🔄 Замена лица", callback_data="swap")
+    builder.button(text="📸 AI Photoshoot", callback_data="ai_photoshoot")
+    builder.button(text="🎨 AI Styles", callback_data="ai_styles")
+    builder.button(text="🎯 AIMage", callback_data="ai_image")
     
-    # Дополнительно
+    # Дополнительные функции
     builder.button(text="📊 Статистика", callback_data="stats")
-    builder.button(text="❓ Помощь", callback_data="help")
     
-    builder.adjust(3, 2)
+    builder.adjust(3, 1)
     return builder.as_markup()
 
 def get_photoshoot_styles_keyboard():
-    """Клавиатура стилей фотосессий"""
-    from main import ULTRA_PHOTOSHOOT_STYLES
+    """Стили для AI Photoshoot"""
+    from prompts import PHOTOSHOOT_REALISM
     
     builder = InlineKeyboardBuilder()
     
-    # Ultra стили в 2 колонки
-    for style_key, style_data in ULTRA_PHOTOSHOOT_STYLES.items():
+    for style_key, style_data in PHOTOSHOOT_REALISM.items():
         builder.button(
             text=f"{style_data['name']}", 
-            callback_data=f"ultra_style_{style_key}"
+            callback_data=f"photoshoot_style_{style_key}"
         )
     
-    builder.adjust(2, 2, 2)
+    builder.adjust(3, 3, 1)
     return builder.as_markup()
 
-def get_reply_keyboard():
-    """Нижнее меню с быстрым доступом"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="📸 AI Фотосессия"),
-                KeyboardButton(text="🎨 Генерация")
-            ],
-            [
-                KeyboardButton(text="🔄 Замена лица"),
-                KeyboardButton(text="📊 Статистика")
-            ],
-            [
-                KeyboardButton(text="❓ Помощь"),
-                KeyboardButton(text="🏠 Главное меню")
-            ]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-        input_field_placeholder="Выбери действие 👇"
-    )
+def get_ai_styles_keyboard():
+    """Стили для AI Styles"""
+    from prompts import AI_STYLES
+    
+    builder = InlineKeyboardBuilder()
+    
+    for style_key, style_data in AI_STYLES.items():
+        builder.button(
+            text=f"{style_data['name']}", 
+            callback_data=f"ai_style_{style_key}"
+        )
+    
+    builder.adjust(4, 4, 4, 4, 4, 4, 4, 2)
+    return builder.as_markup()
+
+def get_photoshoot_formats_keyboard():
+    """Форматы для фотосессии"""
+    from prompts import PHOTOSHOOT_FORMATS
+    
+    builder = InlineKeyboardBuilder()
+    
+    for format_key, format_data in PHOTOSHOOT_FORMATS.items():
+        builder.button(
+            text=f"{format_data['name']}", 
+            callback_data=f"photoshoot_format_{format_key}"
+        )
+    
+    builder.adjust(2)
+    return builder.as_markup()
 
 def get_back_menu():
     """Кнопка возврата"""
@@ -62,22 +67,21 @@ def get_back_menu():
     builder.button(text="🔙 Назад", callback_data="back_to_main")
     return builder.as_markup()
 
-# Старые функции для совместимости
-def get_main_menu():
-    return get_modern_main_menu()
-
-def get_gender_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="👨 Мужчина", callback_data="gender_male")
-    builder.button(text="👩 Женщина", callback_data="gender_female")
-    builder.adjust(2)
-    return builder.as_markup()
-
-def get_style_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📸 Фотореализм", callback_data="style_photorealistic")
-    builder.button(text="🎯 Гиперреализм", callback_data="style_hyperrealistic")
-    builder.button(text="🎬 Кино", callback_data="style_cinematic")
-    builder.button(text="🎨 Арт", callback_data="style_art")
-    builder.adjust(2, 2)
-    return builder.as_markup()
+# Reply клавиатура для удобства
+def get_reply_keyboard():
+    """Reply клавиатура с быстрым доступом"""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="📸 AI Photoshoot"),
+                KeyboardButton(text="🎨 AI Styles")
+            ],
+            [
+                KeyboardButton(text="🎯 AIMage"),
+                KeyboardButton(text="📊 Статистика")
+            ],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+    return keyboard
