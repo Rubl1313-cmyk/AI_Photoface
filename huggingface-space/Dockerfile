@@ -1,4 +1,4 @@
-# 🤖 HuggingFace Space Dockerfile
+# 🤖 HuggingFace Space Dockerfile - Реальный FaceFusion
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -12,19 +12,32 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     wget \
     git \
+    cmake \
+    libsndfile1 \
+    libfontconfig1 \
+    libxrender1 \
+    libsm6 \
+    libxt6 \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Рабочая директория
 WORKDIR /app
 
-# Копирование requirements
+# Копирование и установка зависимостей
 COPY requirements.txt .
-
-# Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Клонирование и установка FaceFusion
+RUN git clone https://github.com/facefusion/facefusion.git /tmp/facefusion && \
+    cd /tmp/facefusion && \
+    python install.py --skip-ffmpeg
+
 # Копирование файлов проекта
-COPY . .
+COPY app.py .
 
 # Создание директории для данных
 RUN mkdir -p /app/data

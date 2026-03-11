@@ -1,5 +1,5 @@
-# 🚀 Railway.app - Оптимизированный requirements.txt
-# Основные зависимости
+# 🚀 Railway.app - Бесплатные зависимости
+# Основные
 aiogram>=3.4.1
 fastapi>=0.104.1
 uvicorn>=0.24.0
@@ -10,15 +10,14 @@ httpx>=0.25.2
 Pillow>=10.1.0
 numpy>=1.24.3
 
-# Дополнительные зависимости для Railway
+# БЕСПЛАТНАЯ замена лиц
+insightface>=0.2.1
+onnxruntime>=1.16.0
+opencv-python>=4.8.0
+
+# Дополнительные
 aiofiles>=23.2.1
 python-multipart>=0.0.6
-
-# Переводы
-deep-translator>=1.11.4
-
-# Опционально: FaceFusion (если доступен)
-# facefusion>=2.3.0
 
 # Валидация
 pydantic>=2.5.0

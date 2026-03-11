@@ -1,5 +1,5 @@
-# 🤖 HuggingFace Space - FaceFusion API
-# Ультра-качественная замена лиц
+# 🤖 HuggingFace FaceFusion API
+# Реальный FaceFusion для максимального качества замены лиц
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -10,6 +10,18 @@ import shutil
 from pathlib import Path
 import logging
 import os
+
+# Импорты FaceFusion
+try:
+    import torch
+    import torchvision
+    from facefusion import core as facefusion_core
+    from facefusion import memory as facefusion_memory
+    from facefusion import state_manager as facefusion_state_manager
+    FACEFUSION_AVAILABLE = True
+except ImportError:
+    FACEFUSION_AVAILABLE = False
+    print("⚠️ FaceFusion not installed, using mock mode")
 
 # Импорты для обработки изображений
 from PIL import Image, ImageEnhance, ImageFilter, ImageDraw

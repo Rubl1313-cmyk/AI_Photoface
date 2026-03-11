@@ -14,12 +14,12 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 logger = logging.getLogger(__name__)
 
-# Лучшие модели Cloudflare 2024
+# Реальные доступные модели Cloudflare Workers AI
 CF_MODELS = {
     "phoenix": "@cf/leonardo/phoenix-1.0",      # Лучший для промптов и текста
     "lucid": "@cf/leonardo/lucid-origin",       # Лучший для фотореализма
-    "sdxl_lightning": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-    "sdxl_turbo": "@cf/stabilityai/stable-diffusion-xl-turbo"
+    "flux": "@cf/black-forest-labs/flux-1-schnell", # Быстрая альтернатива
+    "sdxl": "@cf/stabilityai/stable-diffusion-xl-base-1.0" # Стандартная модель
 }
 
 def enhance_image_quality(image_bytes: bytes) -> bytes:
@@ -74,26 +74,31 @@ async def generate_with_phoenix(
     prompt: str,
     width: int = 1024,
     height: int = 1024,
-    steps: int = 25,
-    guidance: float = 4.0,
+    steps: int = 30,  
+    guidance: float = 7.0,  
     negative_prompt: str = ""
 ) -> Optional[bytes]:
-    """Генерация с Phoenix 1.0 - лучшая модель для промптов"""
+    """Генерация с Phoenix 1.0 - оптимизированная версия"""
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
+    
+    # Расширенный негативный промпт для качества
+    enhanced_negative = "cartoon, anime, painting, drawing, illustration, blurry, low quality, distorted face, artificial, plastic, wax figure, uncanny valley, oversaturated, unnatural colors, artifacts, noise, compression artifacts, watermark, signature, text, multiple faces, extra limbs"
+    full_negative = f"{enhanced_negative}, {negative_prompt}" if negative_prompt else enhanced_negative
     
     payload = {
         "prompt": prompt.strip(),
-        "width": width,
-        "height": height,
-        "steps": steps,
-        "guidance": guidance,
-        "model": CF_MODELS["phoenix"]
+        "model": CF_MODELS["phoenix"],
+        "width": min(1024, width),  
+        "height": min(1024, height),  
+        "num_steps": min(30, max(20, int(steps))),  
+        "guidance_scale": guidance,
+        "num_outputs": 1
     }
     
-    if negative_prompt:
-        payload["negative_prompt"] = negative_prompt.strip()
+    if full_negative:
+        payload["negative_prompt"] = full_negative.strip()
     
-    logger.info(f"🔥 Phoenix generation: {prompt[:50]}...")
+    logger.info(f"🔥 Optimized Phoenix request: {len(prompt)} chars, steps: {payload['num_steps']}")
     
     async with httpx.AsyncClient(timeout=180) as client:
         try:
@@ -104,10 +109,20 @@ async def generate_with_phoenix(
             )
             resp.raise_for_status()
             
-            enhanced = enhance_image_quality(resp.content)
-            logger.info(f"✅ Phoenix success: {len(enhanced)} bytes")
-            return enhanced
-            
+            result = resp.json()
+            if result.get("success") and result.get("images"):
+                image_b64 = result["images"][0]
+                image_bytes = base64.b64decode(image_b64)
+                
+                # Улучшение качества
+                enhanced = enhance_image_quality(image_bytes)
+                
+                logger.info(f"✅ Optimized Phoenix success: {len(enhanced)} bytes")
+                return enhanced
+            else:
+                logger.error(f"❌ Phoenix error: {result}")
+                return None
+                
         except Exception as e:
             logger.error(f"❌ Phoenix error: {e}")
             return None
@@ -116,8 +131,8 @@ async def generate_with_lucid(
     prompt: str,
     width: int = 1024,
     height: int = 1024,
-    steps: int = 25,
-    guidance: float = 4.0,
+    steps: int = 35,  # Оптимизировано с 25 до 35
+    guidance: float = 8.0,  # Оптимизировано с 4.0 до 8.0
     negative_prompt: str = ""
 ) -> Optional[bytes]:
     """Генерация с Lucid Origin - лучшая модель для фотореализма"""
