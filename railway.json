@@ -1,0 +1,20 @@
+{
+  "name": "AI PhotoStudio",
+  "services": {
+    "web": {
+      "build": {
+        "dockerfile": "Railway-Dockerfile"
+      },
+      "healthcheck": {
+        "path": "/health",
+        "interval": "30s",
+        "timeout": "10s",
+        "retries": 3
+      }
+    }
+  },
+  "env": {
+    "PYTHON_VERSION": "3.11",
+    "PORT": "8000"
+  }
+}

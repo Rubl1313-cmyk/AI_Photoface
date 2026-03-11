@@ -1,9 +1,24 @@
-aiogram==3.4.1
-aiohttp==3.9.1
-deep-translator==1.11.4
-python-dotenv==1.0.0
-Pillow==10.1.0
-httpx==0.25.2
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.5.0
+# 🚀 Railway.app - Оптимизированный requirements.txt
+# Основные зависимости
+aiogram>=3.4.1
+fastapi>=0.104.1
+uvicorn>=0.24.0
+python-dotenv>=1.0.0
+httpx>=0.25.2
+
+# Обработка изображений
+Pillow>=10.1.0
+numpy>=1.24.3
+
+# Дополнительные зависимости для Railway
+aiofiles>=23.2.1
+python-multipart>=0.0.6
+
+# Переводы
+deep-translator>=1.11.4
+
+# Опционально: FaceFusion (если доступен)
+# facefusion>=2.3.0
+
+# Валидация
+pydantic>=2.5.0

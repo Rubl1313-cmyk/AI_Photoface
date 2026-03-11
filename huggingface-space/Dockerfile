@@ -1,4 +1,4 @@
-# 🚀 Railway.app Dockerfile
+# 🤖 HuggingFace Space Dockerfile
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -23,12 +23,6 @@ COPY requirements.txt .
 # Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Установка FaceFusion
-RUN git clone https://github.com/facefusion/facefusion.git /tmp/facefusion && \
-    cd /tmp/facefusion && \
-    pip install -r requirements.txt && \
-    python install.py --skip-ffmpeg
-
 # Копирование файлов проекта
 COPY . .
 
@@ -39,8 +33,8 @@ RUN mkdir -p /app/data
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Порт для Railway
-EXPOSE 8000
+# Порт для HuggingFace Spaces
+EXPOSE 7860
 
 # Запуск приложения
-CMD ["python", "railway_main.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
