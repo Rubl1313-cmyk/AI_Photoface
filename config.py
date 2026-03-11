@@ -1,16 +1,13 @@
 # config.py
 import os
+from dotenv import load_dotenv
 from pathlib import Path
 
 # Загружаем переменные окружения
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+load_dotenv()
 
 # 🔑 TELEGRAM
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
 # 🔑 WEBHOOK (HF Spaces)
@@ -32,5 +29,5 @@ FACEFUSION_URL = os.getenv("FACEFUSION_URL", "https://Dmitry1313-facefusion-api.
 BOT_NAME = "🎨 AI PhotoStudio"
 
 # 🔑 DATA DIRECTORY (HF Spaces)
-DATA_DIR = Path(os.getenv("DATA_DIR", "./data"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 DATA_DIR.mkdir(exist_ok=True)

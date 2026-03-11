@@ -1,8 +1,8 @@
-# Клавиатуры для AI PhotoStudio 2.0
-from aiogram.types import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 def get_main_menu():
-    """Главное меню с 3 категориями"""
+    """Главное меню бота"""
     builder = InlineKeyboardBuilder()
     
     # Основные функции
@@ -12,8 +12,9 @@ def get_main_menu():
     
     # Дополнительные функции
     builder.button(text="📊 Статистика", callback_data="stats")
+    builder.button(text="💬 Поддержка", callback_data="support")
     
-    builder.adjust(3, 1)
+    builder.adjust(3, 2)
     return builder.as_markup()
 
 def get_photoshoot_styles_keyboard():
@@ -47,27 +48,22 @@ def get_ai_styles_keyboard():
     return builder.as_markup()
 
 def get_photoshoot_formats_keyboard():
-    """Форматы для фотосессии"""
-    from prompts import PHOTOSHOOT_FORMATS
-    
+    """Клавиатура выбора формата"""
     builder = InlineKeyboardBuilder()
     
-    for format_key, format_data in PHOTOSHOOT_FORMATS.items():
-        builder.button(
-            text=f"{format_data['name']}", 
-            callback_data=f"photoshoot_format_{format_key}"
-        )
+    builder.button(text="📱 Вертикаль 4:3", callback_data="photoshoot_format_vertical_4_3")
+    builder.button(text="📸 Горизонтальный 16:9", callback_data="photoshoot_format_horizontal_16_9")
     
     builder.adjust(2)
     return builder.as_markup()
 
 def get_back_menu():
-    """Кнопка возврата"""
+    """Кнопка возврата в главное меню"""
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Назад", callback_data="back_to_main")
     return builder.as_markup()
 
-# Reply клавиатура для удобства
+# Reply клавиатура для быстрого доступа
 def get_reply_keyboard():
     """Reply клавиатура с быстрым доступом"""
     keyboard = ReplyKeyboardMarkup(
@@ -80,8 +76,11 @@ def get_reply_keyboard():
                 KeyboardButton(text="🎯 AIMage"),
                 KeyboardButton(text="📊 Статистика")
             ],
+            [
+                KeyboardButton(text="💬 Поддержка"),
+                KeyboardButton(text="🔙 Главное меню")
+            ]
         ],
-        resize_keyboard=True,
-        one_time_keyboard=False
+        resize_keyboard=True
     )
     return keyboard

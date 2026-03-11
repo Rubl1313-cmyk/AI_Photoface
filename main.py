@@ -1,28 +1,23 @@
-# 🚀 Полностью рабочий бот с 3 категориями
-# AI Photoshoot, AI Styles, AIMage
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import logging
 import os
-import tempfile
-import shutil
 from pathlib import Path
-from aiogram import Bot, types, F, Dispatcher
-from aiogram.filters import Command, CommandStart
+import sys
+
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BufferedInputFile, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardBuilder
-from fastapi import FastAPI
-import uvicorn
-import httpx
-import base64
-import io
-import json
+from aiogram.types import BufferedInputFile, ReplyKeyboardRemove
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import config
-from services.phoenix_cloudflare import generate_with_flux_klein, generate_with_flux_schnell
+from services.cloudflare import generate_with_flux_klein, generate_with_flux_schnell
 from services.usage import UsageTracker
-from modern_states import UserStates
-from modern_keyboards import (
+from states import UserStates
+from keyboards import (
     get_main_menu, 
     get_photoshoot_styles_keyboard,
     get_ai_styles_keyboard,
@@ -32,6 +27,7 @@ from modern_keyboards import (
 from prompts import (
     PHOTOSHOOT_REALISM,
     AI_STYLES,
+    POSES,
     PHOTOSHOOT_FORMATS,
     build_photoshoot_prompt,
     get_photoshoot_negative_prompt,
@@ -39,33 +35,36 @@ from prompts import (
 )
 
 # Константы
-from config import DATA_DIR
+DATA_DIR = Path("/app/data")
+DATA_DIR.mkdir(exist_ok=True)
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Инициализация
+# Инициализация бота
 bot = Bot(token=config.BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-usage = UsageTracker(daily_limit=config.DAILY_LIMIT)
+dp = Dispatcher()
 
-# Вспомогательная функция для отправки фото
-async def send_photo(message, photo, caption=None, reply_markup=None):
-    """Отправка фото с автоматическим определением типа"""
+# Инициализация трекера использования
+usage = UsageTracker()
+
+# Отправка фото с caption
+async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
+    """Отправка фото с поддержкой длинных caption"""
     try:
         await message.answer_photo(
             photo=photo,
-            caption=caption,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            caption=caption[:1024],  # Telegram лимит для caption
+            reply_markup=reply_markup
         )
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки фото: {e}")
-        await message.answer("❌ Не удалось отправить фото")
+        logger.error(f"Error sending photo: {e}")
+        await message.answer("❌ Ошибка отправки фото")
 
-# Команда /start
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.set_state(UserStates.idle)
@@ -96,7 +95,7 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
         parse_mode="Markdown"
     )
 
-# AI Styles
+# AI Styles - референс + стили
 @dp.callback_query(F.data == "ai_styles")
 async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_ai_styles_face)
@@ -120,24 +119,15 @@ async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
-# Обработчики фото и документов
-@dp.message(F.photo | F.document)
+@dp.message(F.photo)
 async def handle_photo_upload(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     
     # AI Photoshoot - загрузка фото
     if current_state == UserStates.waiting_for_photoshoot_face:
-        if message.photo:
-            photo_file = await bot.get_file(message.photo[-1].file_id)
-            photo_bytes = await bot.download_file(photo_file.file_path)
-            await state.update_data(photoshoot_face=photo_bytes.read())
-        elif message.document and message.document.mime_type and message.document.mime_type.startswith('image/'):
-            doc_file = await bot.get_file(message.document.file_id)
-            doc_bytes = await bot.download_file(doc_file.file_path)
-            await state.update_data(photoshoot_face=doc_bytes.read())
-        else:
-            await message.answer("❌ Пожалуйста, отправьте фото или изображение")
-            return
+        photo_file = await bot.get_file(message.photo[-1].file_id)
+        photo_bytes = await bot.download_file(photo_file.file_path)
+        await state.update_data(photoshoot_face=photo_bytes.read())
         
         await state.set_state(UserStates.selecting_photoshoot_style)
         await message.answer(
@@ -149,17 +139,9 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
     
     # AI Styles - загрузка фото
     elif current_state == UserStates.waiting_for_ai_styles_face:
-        if message.photo:
-            photo_file = await bot.get_file(message.photo[-1].file_id)
-            photo_bytes = await bot.download_file(photo_file.file_path)
-            await state.update_data(ai_styles_face=photo_bytes.read())
-        elif message.document and message.document.mime_type and message.document.mime_type.startswith('image/'):
-            doc_file = await bot.get_file(message.document.file_id)
-            doc_bytes = await bot.download_file(doc_file.file_path)
-            await state.update_data(ai_styles_face=doc_bytes.read())
-        else:
-            await message.answer("❌ Пожалуйста, отправьте фото или изображение")
-            return
+        photo_file = await bot.get_file(message.photo[-1].file_id)
+        photo_bytes = await bot.download_file(photo_file.file_path)
+        await state.update_data(ai_styles_face=photo_bytes.read())
         
         await state.set_state(UserStates.selecting_ai_styles_style)
         await message.answer(
@@ -311,7 +293,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         # Получаем параметры формата
         format_info = PHOTOSHOOT_FORMATS[format_key]
         
-        # Собираем финальный промпт
+        # Собираем финальный промпт (без позы, только селфи стиль)
         final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
         negative_prompt = get_photoshoot_negative_prompt(style_key)
         
@@ -478,43 +460,11 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
     finally:
         await state.set_state(UserStates.idle)
 
-# Статистика
-@dp.callback_query(F.data == "stats")
-async def handle_stats(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    usage_text = (
-        f"📊 **Твоя статистика:**\n\n"
-        f"📸 Создано сегодня: {usage.get_usage(user_id)}\n"
-        f"🎯 Лимит в день: {usage.daily_limit}\n"
-        f"📈 Осталось: {usage.daily_limit - usage.get_usage(user_id)}\n\n"
-        f"⏰ Лимит обновится в 00:00 по МСК"
-    )
-    await callback.message.edit_text(usage_text, reply_markup=get_back_menu(), parse_mode="Markdown")
-
-# Назад в главное меню
-@dp.callback_query(F.data == "back_to_main")
-async def handle_back_to_main(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(UserStates.idle)
-    await callback.message.edit_text(
-        "🎨 **AI PhotoStudio 2.0**\n\n"
-        "✨ *Профессиональные фотографии с ИИ*\n\n"
-        "🎯 **3 категории:**\n"
-        "📸 **AI Photoshoot** - реалистичные фото с твоим лицом\n"
-        "🎨 **AI Styles** - популярные стили с референсом\n"
-        "🎯 **AIMage** - генерация по промпту\n\n"
-        f"💡 *Лимит: {usage.daily_limit} фото в день!*\n"
-        "🚀 *FLUX.2-klein и FLUX.1-schnell технологии!*",
-        reply_markup=get_main_menu(),
-        parse_mode="Markdown"
-    )
-
-# Запуск бота
-async def main():
-    await bot.delete_webhook()
-    await dp.start_polling(bot)
-
 if __name__ == "__main__":
     # Запуск для Railway
+    import uvicorn
+    from main_hf import app
+    
     uvicorn.run(
         "main_hf:app",
         host="0.0.0.0",

@@ -1,4 +1,3 @@
-# Состояния для AI PhotoStudio 2.0
 from aiogram.fsm.state import State, StatesGroup
 
 class UserStates(StatesGroup):
