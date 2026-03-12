@@ -25,27 +25,29 @@ CF_MODELS = {
 def prepare_reference_image(image_bytes: bytes, target_size: int = 1024) -> bytes:
     """
     Подготавливает референсное изображение для FLUX.2-klein:
-    - Обрезает до квадрата по центру
-    - Изменяет размер до target_size (кратно 16, оптимально 1024)
-    - Возвращает JPEG с высоким качеством
+    - Масштабирует с сохранением пропорций так, чтобы большая сторона стала target_size
+    - Добавляет чёрные полосы (padding) до квадрата target_size x target_size
     """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        # Обрезка до квадрата по центру
-        min_side = min(img.size)
-        left = (img.width - min_side) / 2
-        top = (img.height - min_side) / 2
-        right = (img.width + min_side) / 2
-        bottom = (img.height + min_side) / 2
-        img = img.crop((left, top, right, bottom))
-        # Ресайз до target_size
-        img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+        # Определяем коэффициент масштабирования, чтобы большая сторона стала target_size
+        ratio = target_size / max(img.size)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
+        
+        # Создаём квадратное полотно target_size x target_size с чёрным фоном
+        new_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
+        # Вставляем изображение по центру
+        left = (target_size - new_size[0]) // 2
+        top = (target_size - new_size[1]) // 2
+        new_img.paste(img, (left, top))
+        
         output = io.BytesIO()
-        img.save(output, format="JPEG", quality=95, optimize=True)
+        new_img.save(output, format="JPEG", quality=95, optimize=True)
         return output.getvalue()
     except Exception as e:
         logger.error(f"❌ Image preparation error: {e}")
-        return image_bytes  # fallback – возвращаем оригинал
+        return image_bytes
 
 def enhance_image_quality(image_bytes: bytes, mode: str = "auto") -> bytes:
     """
