@@ -466,7 +466,6 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
         await state.set_state(UserStates.idle)
 
 if __name__ == "__main__":
-    from aiogram.webhook.aiohttp import AiohttpRequestHandler
     from aiohttp import web
     
     # Проверяем режим запуска (по умолчанию webhook для Railway)
@@ -487,8 +486,21 @@ if __name__ == "__main__":
             logger.info("✅ Webhook удален")
         
         app = web.Application()
-        webhook_handler = AiohttpRequestHandler(bot=bot, secret_token=os.getenv("WEBHOOK_SECRET", ""))
-        app.router.add_post(config.WEBHOOK_PATH, webhook_handler)
+        
+        # Обработчик webhook для aiogram 3.x
+        async def handle_webhook(request):
+            from aiogram.methods import Update
+            from aiogram.types import Update as TgUpdate
+            
+            data = await request.json()
+            update = TgUpdate(**data)
+            
+            # Обрабатываем update через диспетчер
+            await dp.feed_update(bot, update)
+            
+            return web.Response(text="OK")
+        
+        app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
         
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
