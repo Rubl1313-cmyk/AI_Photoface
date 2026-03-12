@@ -481,9 +481,9 @@ if __name__ == "__main__":
             else:
                 logger.warning("⚠️ WEBHOOK_URL не установлен!")
         
+        # Не удаляем вебхук при завершении
         async def on_shutdown(app):
-            await bot.delete_webhook()
-            logger.info("✅ Webhook удален")
+            logger.info("⏹️ Приложение остановлено (вебхук сохранен)")
         
         app = web.Application()
         
