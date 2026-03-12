@@ -443,7 +443,7 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
 
 async def process_photoshoot_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_photoshoot)
-    await message.answer("📸 *Запускаю генерацию... Это может занять до 1 минуты. Я сообщу, когда будет готово!*", parse_mode="Markdown")
+    await message.answer("📸 *Генерирую...*", parse_mode="Markdown")
 
     try:
         data = await state.get_data()
@@ -453,7 +453,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         user_prompt = custom_prompt or data.get("photoshoot_prompt", "")
 
         if not face_photo:
-            await message.answer("❌ Фото не найдено. Начни заново")
+            await message.answer("❌ Фото не найдено")
             await state.set_state(UserStates.idle)
             return
 
@@ -465,42 +465,32 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
 
         format_info = PHOTOSHOOT_FORMATS[format_key]
         final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
-        negative_prompt = get_photoshoot_negative_prompt(style_key)
 
-        logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
-
-        # Отправляем задачу в очередь
-        job_id = await generate_photoshoot(
+        image_bytes = await generate_flux_klein(
             prompt=final_prompt,
             reference_image=face_photo,
-            callback_url=CALLBACK_URL,
-            width=1024,
-            height=576,
-            strength=0.6,
-            steps=20,                     # добавляем
-            guidance=6.0,
+            width=format_info["width"],
+            height=format_info["height"],
+            guidance=7.5
         )
 
-        if job_id:
-            # Сохраняем в pending_jobs
-            pending_jobs[job_id] = (message.chat.id, user_id, "photoshoot", style_key, user_prompt)
-            await message.answer(
-                "🔄 *Задача поставлена в очередь!*\n\n"
-                "Я сообщу, когда изображение будет готово (обычно 30-60 секунд).",
-                parse_mode="Markdown"
-            )
+        if image_bytes:
+            style = PHOTOSHOOT_REALISM[style_key]
+            caption = f"📸 **{style['name']} готов!**\n\n✨ Создано с FLUX.2-klein"
+            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            usage.record_generation(user_id)
         else:
-            await message.answer("❌ Ошибка при запуске генерации. Попробуй ещё раз.")
+            await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
         logger.error(f"❌ AI Photoshoot error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-
+        
 async def process_ai_styles_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_ai_styles)
-    await message.answer("🎨 *Запускаю генерацию... Это может занять до 1 минуты. Я сообщу, когда будет готово!*", parse_mode="Markdown")
+    await message.answer("🎨 *Генерирую...*", parse_mode="Markdown")
 
     try:
         data = await state.get_data()
@@ -509,7 +499,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
         user_prompt = custom_prompt or data.get("ai_styles_prompt", "")
 
         if not face_photo:
-            await message.answer("❌ Фото не найдено. Начни заново")
+            await message.answer("❌ Фото не найдено")
             await state.set_state(UserStates.idle)
             return
 
@@ -520,38 +510,32 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             return
 
         final_prompt = build_ai_styles_prompt(style_key, user_prompt)
-        logger.info(f"🎨 AI Styles: {style_key} - {final_prompt[:100]}...")
 
-        job_id = await generate_style(
+        image_bytes = await generate_flux_klein(
             prompt=final_prompt,
             reference_image=face_photo,
             width=1024,
-            height=576,
-            strength=0.7,
-            steps=20,                     # добавляем
-            guidance=5.0,
-            negative_prompt=""  # для стилей не передаём негативный промпт
+            height=576,   # 16:9
+            guidance=7.5
         )
 
-        if job_id:
-            pending_jobs[job_id] = (message.chat.id, user_id, "ai_styles", style_key, user_prompt)
-            await message.answer(
-                "🔄 *Задача поставлена в очередь!*\n\n"
-                "Я сообщу, когда изображение будет готово (обычно 30-60 секунд).",
-                parse_mode="Markdown"
-            )
+        if image_bytes:
+            style = AI_STYLES[style_key]
+            caption = f"🎨 **{style['name']} готов!**\n\n✨ Создано с FLUX.2-klein"
+            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            usage.record_generation(user_id)
         else:
-            await message.answer("❌ Ошибка при запуске генерации. Попробуй ещё раз.")
+            await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
         logger.error(f"❌ AI Styles error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-
+        
 async def process_ai_image_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_ai_image)
-    await message.answer("🎨 *Запускаю генерацию... Это займёт несколько секунд. Я сообщу, когда будет готово!*", parse_mode="Markdown")
+    await message.answer("🎨 *Генерирую...*", parse_mode="Markdown")
 
     try:
         user_id = message.from_user.id
@@ -560,41 +544,32 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
             await state.set_state(UserStates.idle)
             return
 
-        # Получаем промпт из состояния, если не передан
-        if not custom_prompt:
-            data = await state.get_data()
-            prompt = data.get("ai_image_prompt", "")
-        else:
-            prompt = custom_prompt
-
+        data = await state.get_data()
+        prompt = custom_prompt or data.get("ai_image_prompt", "")
         if not prompt.strip():
             prompt = "beautiful digital art, high quality, detailed, vibrant colors, professional illustration"
 
-        logger.info(f"🎨 AIMage: {prompt[:50]}...")
-
-        job_id = await generate_ai_image(
+        image_bytes = await generate_flux_schnell(
             prompt=prompt,
-            callback_url=CALLBACK_URL,
             width=1024,
-            height=1024
+            height=1024,
+            steps=4,
+            guidance=3.5
         )
 
-        if job_id:
-            pending_jobs[job_id] = (message.chat.id, user_id, "aimage", None, prompt)
-            await message.answer(
-                "🔄 *Задача поставлена в очередь!*\n\n"
-                "Я сообщу, когда изображение будет готово (обычно 5-10 секунд).",
-                parse_mode="Markdown"
-            )
+        if image_bytes:
+            caption = f"🎨 **Генерация завершена!**\n\n📝 `{prompt}`\n✨ Создано с FLUX.1-schnell"
+            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            usage.record_generation(user_id)
         else:
-            await message.answer("❌ Ошибка при запуске генерации. Попробуй ещё раз.")
+            await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
         logger.error(f"❌ AIMage error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-
+        
 # ================== ЗАПУСК ==================
 
 if __name__ == "__main__":
