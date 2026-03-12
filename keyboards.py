@@ -51,10 +51,11 @@ def get_photoshoot_formats_keyboard():
     """Клавиатура выбора формата"""
     builder = InlineKeyboardBuilder()
     
-    builder.button(text="📱 Вертикаль 4:3", callback_data="photoshoot_format_vertical_4_3")
-    builder.button(text="📸 Горизонтальный 16:9", callback_data="photoshoot_format_horizontal_16_9")
+    builder.row(
+        InlineKeyboardButton(text="📱 Вертикаль 4:3", callback_data="photoshoot_format_vertical_4_3"),
+        InlineKeyboardButton(text="📸 Горизонтальный 16:9", callback_data="photoshoot_format_horizontal_16_9")
+    )
     
-    builder.adjust(2)
     return builder.as_markup()
 
 def get_back_menu():
