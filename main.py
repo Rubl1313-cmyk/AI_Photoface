@@ -37,9 +37,6 @@ from prompts import (
     build_ai_styles_prompt
 )
 
-logger.info(f"DEBUG: Все переменные окружения: {list(os.environ.keys())}")
-logger.info(f"DEBUG: PUBLIC_URL = {os.getenv('PUBLIC_URL')}")
-
 # Константы
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -50,6 +47,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+logger.info(f"DEBUG: Все переменные окружения: {list(os.environ.keys())}")
+logger.info(f"DEBUG: PUBLIC_URL = {os.getenv('PUBLIC_URL')}")
 
 # Инициализация бота
 BOT_TOKEN = config.BOT_TOKEN
