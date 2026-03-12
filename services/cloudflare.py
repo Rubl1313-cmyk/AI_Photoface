@@ -194,13 +194,29 @@ async def generate_with_flux_klein(
             result = resp.json()
             if result.get("success") and result.get("images"):
                 image_b64 = result["images"][0]
-                image_bytes = base64.b64decode(image_b64)
                 
-                # Улучшение качества с режимом для фотосессии
-                enhanced = enhance_image_quality(image_bytes, mode="photoshoot")
+                # Проверка на пустой base64
+                if not image_b64 or len(image_b64) < 1000:
+                    logger.error(f"❌ Invalid/empty image base64 (length: {len(image_b64) if image_b64 else 0})")
+                    return None
                 
-                logger.info(f"✅ FLUX.2-klein success: {len(enhanced)} bytes")
-                return enhanced
+                try:
+                    image_bytes = base64.b64decode(image_b64)
+                    
+                    # Проверка что это действительно изображение
+                    test_img = Image.open(io.BytesIO(image_bytes))
+                    width, height = test_img.size
+                    logger.info(f"📐 Image size: {width}x{height}")
+                    
+                    # Улучшение качества с режимом для фотосессии
+                    enhanced = enhance_image_quality(image_bytes, mode="photoshoot")
+                    
+                    logger.info(f"✅ FLUX.2-klein success: {len(enhanced)} bytes")
+                    return enhanced
+                    
+                except Exception as e:
+                    logger.error(f"❌ Image processing error: {e}")
+                    return None
             else:
                 logger.error(f"❌ FLUX.2-klein error: {result}")
                 return None

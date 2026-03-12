@@ -204,7 +204,10 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
         f"• Во что одет? (в джинсах, в вечернем платье)\n"
         f"• Какое настроение? (счастливый, задумчивый)\n"
         f"• Освещение? (естественное, неоновое)\n\n"
-        f"👇 *Напиши детали или отправь 'готово' для генерации*",
+        f"👇 *Напиши детали или нажми кнопку ниже*",
+        reply_markup=InlineKeyboardBuilder().row(
+            InlineKeyboardButton(text="✅ Готово", callback_data="photoshoot_ready")
+        ).as_markup(),
         parse_mode="Markdown"
     )
 
@@ -230,9 +233,21 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
         f"• Что еще добавить? (дополнительные элементы)\n"
         f"• Какое настроение? (яркое, мрачное, мистическое)\n"
         f"• Особенности? (фон, детали, атмосфера)\n\n"
-        f"👇 *Напиши детали или отправь 'готово' для генерации*",
+        f"👇 *Напиши детали или нажми кнопку ниже*",
+        reply_markup=InlineKeyboardBuilder().row(
+            InlineKeyboardButton(text="✅ Готово", callback_data="ai_styles_ready")
+        ).as_markup(),
         parse_mode="Markdown"
     )
+
+# Обработчики кнопок "Готово"
+@dp.callback_query(F.data == "photoshoot_ready")
+async def handle_photoshoot_ready(callback: types.CallbackQuery, state: FSMContext):
+    await process_photoshoot_generation(callback.message, state, "")
+
+@dp.callback_query(F.data == "ai_styles_ready")
+async def handle_ai_styles_ready(callback: types.CallbackQuery, state: FSMContext):
+    await process_ai_styles_generation(callback.message, state, "")
 
 # Обработчики текстовых сообщений
 @dp.message()
@@ -266,7 +281,23 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     
     # AIMage - промпт
     elif current_state == UserStates.waiting_for_ai_image_prompt:
-        await process_ai_image_generation(message, state, user_text)
+        if user_text.lower() in ['готово', 'дальше', 'continue', '']:
+            await process_ai_image_generation(message, state, "")
+        else:
+            await state.update_data(ai_image_prompt=user_text)
+            await message.answer(
+                "✅ *Детали добавлены!*\n\n"
+                "👇 *Отправь 'готово' для генерации или добавь еще детали*",
+                reply_markup=InlineKeyboardBuilder().row(
+                    InlineKeyboardButton(text="✅ Готово", callback_data="ai_image_ready")
+                ).as_markup(),
+                parse_mode="Markdown"
+            )
+
+# Обработчики кнопок "Готово"
+@dp.callback_query(F.data == "ai_image_ready")
+async def handle_ai_image_ready(callback: types.CallbackQuery, state: FSMContext):
+    await process_ai_image_generation(callback.message, state, "")
 
 # Функции генерации
 async def process_photoshoot_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
