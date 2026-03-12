@@ -184,7 +184,7 @@ async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMConte
 # AI Photoshoot - выбор формата
 @dp.callback_query(F.data.startswith("photoshoot_format_"))
 async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMContext):
-    format_key = callback.data.split("_")[2]
+    format_key = "_".join(callback.data.split("_")[2:])  # vertical_4_3 или horizontal_16_9
     
     if format_key not in PHOTOSHOOT_FORMATS:
         await callback.answer("❌ Формат не найден", show_alert=True)
