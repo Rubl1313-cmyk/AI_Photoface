@@ -34,7 +34,7 @@ MODEL_CONFIGS = {
     },
     "sdxl": {
         "name": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-        "default_steps": 20,
+        "default_steps": 8,
         "default_guidance": 7.5,
         "strength_range": (0.0, 1.0),
         "description": "Высокое качество, но медленнее"
