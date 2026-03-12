@@ -474,10 +474,11 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             prompt=final_prompt,
             reference_image=face_photo,
             callback_url=CALLBACK_URL,
-            width=format_info["width"],
-            height=format_info["height"],
-            negative_prompt=negative_prompt,
-            strength=0.45
+            width=1024,
+            height=576,
+            strength=0.6,
+            steps=40,                     # добавляем
+            guidance=6.0,
         )
 
         if job_id:
@@ -524,10 +525,11 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
         job_id = await generate_style(
             prompt=final_prompt,
             reference_image=face_photo,
-            callback_url=CALLBACK_URL,
             width=1024,
             height=576,
             strength=0.7,
+            steps=40,                     # добавляем
+            guidance=5.0,
             negative_prompt=""  # для стилей не передаём негативный промпт
         )
 
