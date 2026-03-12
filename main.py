@@ -489,16 +489,23 @@ if __name__ == "__main__":
         
         # Обработчик webhook для aiogram 3.x
         async def handle_webhook(request):
-            from aiogram.methods import Update
-            from aiogram.types import Update as TgUpdate
-            
-            data = await request.json()
-            update = TgUpdate(**data)
-            
-            # Обрабатываем update через диспетчер
-            await dp.feed_update(bot, update)
-            
-            return web.Response(text="OK")
+            try:
+                data = await request.json()
+                logger.info(f"📩 Получен webhook: {data.get('update_id', 'unknown')}")
+                
+                # Правильный импорт для aiogram 3.x
+                from aiogram.types import Update
+                update = Update(**data)
+                
+                # Обрабатываем update через диспетчер
+                await dp.feed_update(bot, update)
+                
+                return web.Response(text="OK")
+            except Exception as e:
+                logger.error(f"❌ Webhook error: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return web.Response(text="Error", status=500)
         
         app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
         
