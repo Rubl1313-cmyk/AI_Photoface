@@ -7,7 +7,7 @@ from pathlib import Path
 load_dotenv()
 
 # 🔑 TELEGRAM
-TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "").strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
 # 🔑 WEBHOOK (HF Spaces)
@@ -23,7 +23,6 @@ DAILY_LIMIT = int(os.getenv("DAILY_LIMIT", "50"))
 
 # 🔑 EXTERNAL APIS
 CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
-FACEFUSION_URL = os.getenv("FACEFUSION_URL", "https://Dmitry1313-facefusion-api.hf.space").strip()
 
 # 🔑 BOT INFO
 BOT_NAME = "🎨 AI PhotoStudio"

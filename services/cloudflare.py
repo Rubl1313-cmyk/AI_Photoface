@@ -19,21 +19,56 @@ CF_MODELS = {
     "flux_schnell": "@cf/black-forest-labs/flux-1-schnell",  # Для быстрой генерации
 }
 
-def enhance_image_quality(image_bytes: bytes) -> bytes:
-    """Улучшение качества изображения"""
+def enhance_image_quality(image_bytes: bytes, mode: str = "auto") -> bytes:
+    """
+    Улучшение качества изображения
+    mode: 'auto' - автоматически, 'photoshoot' - для фотосессии, 'styles' - для стилей
+    """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Улучшение резкости
-        enhancer = ImageEnhance.Sharpness(img)
-        img = enhancer.enhance(1.2)
-        
-        # Улучшение контрастности
-        enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(1.1)
-        
-        # Unsharp mask
-        img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
+        if mode == "photoshoot":
+            # Улучшения для фотореализма
+            # Резкость
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(1.3)
+            
+            # Контраст
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.15)
+            
+            # Цветовая насыщенность (немного)
+            enhancer = ImageEnhance.Color(img)
+            img = enhancer.enhance(1.05)
+            
+            # Баланс белого - слегка теплее
+            from PIL import ImageEnhance
+            enhancer = ImageEnhance.Brightness(img)
+            img = enhancer.enhance(1.02)
+            
+            # Unsharp mask для профессионального вида
+            img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+            
+            # Легкое сглаживание для кожи
+            img = img.filter(ImageFilter.SMOOTH_MORE)
+            
+        elif mode == "styles":
+            # Для стилей - меньше обработки, сохраняем арт-стиль
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(1.15)
+            
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.05)
+            
+        else:
+            # Авто режим
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(1.2)
+            
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.1)
+            
+            img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
         
         output = io.BytesIO()
         img.save(output, format="JPEG", quality=98, optimize=True)
@@ -68,7 +103,7 @@ def compress_image(image_bytes: bytes, max_kb: int = 400) -> bytes:
         return image_bytes
 
 def create_face_mask(image_bytes: bytes) -> str:
-    """Создание маски для лица"""
+    """Создание маски для лица - улучшенная версия"""
     try:
         img = Image.open(io.BytesIO(image_bytes))
         w, h = img.size
@@ -78,14 +113,18 @@ def create_face_mask(image_bytes: bytes) -> str:
         from PIL import ImageDraw
         draw = ImageDraw.Draw(mask)
         
-        # Область лица
-        face_x = int(w * 0.25)
-        face_y = int(h * 0.15)
-        face_w = int(w * 0.5)
-        face_h = int(h * 0.5)
+        # Область лица - более точное позиционирование
+        # Лицо обычно в центре-верхней части
+        face_x = int(w * 0.2)
+        face_y = int(h * 0.1)
+        face_w = int(w * 0.6)
+        face_h = int(h * 0.55)
         
+        # Рисуем эллипс для лица
         draw.ellipse([face_x, face_y, face_x + face_w, face_y + face_h], fill=0)
-        mask = mask.filter(ImageFilter.GaussianBlur(radius=20))
+        
+        # Мягкое размытие для плавных границ
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=25))
         
         mask_bytes = io.BytesIO()
         mask.save(mask_bytes, format="PNG")
@@ -156,8 +195,8 @@ async def generate_with_flux_klein(
                 image_b64 = result["images"][0]
                 image_bytes = base64.b64decode(image_b64)
                 
-                # Улучшение качества
-                enhanced = enhance_image_quality(image_bytes)
+                # Улучшение качества с режимом для фотосессии
+                enhanced = enhance_image_quality(image_bytes, mode="photoshoot")
                 
                 logger.info(f"✅ FLUX.2-klein success: {len(enhanced)} bytes")
                 return enhanced

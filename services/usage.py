@@ -69,3 +69,13 @@ class UsageTracker:
             f"📈 [{bar}] {percent:.0f}%\n"
             f"✅ `{used}` / ❌ `{remaining}` из `{self.daily_limit}`"
         )
+    
+    # Алиасы для совместимости
+    def can_generate(self, user_id: int) -> bool:
+        return self.check_limit(user_id)
+    
+    def get_usage(self, user_id: int) -> int:
+        return self.get_count(user_id)
+    
+    def record_generation(self, user_id: int) -> bool:
+        return self.increment(user_id)

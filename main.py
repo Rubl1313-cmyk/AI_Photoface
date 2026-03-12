@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import config
 from services.cloudflare import generate_with_flux_klein, generate_with_flux_schnell
-from services.usage import UsageTracker
+from services import UsageTracker
 from states import UserStates
 from keyboards import (
     get_main_menu, 
@@ -461,13 +461,5 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
         await state.set_state(UserStates.idle)
 
 if __name__ == "__main__":
-    # Запуск для Railway
-    import uvicorn
-    from main_hf import app
-    
-    uvicorn.run(
-        "main_hf:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", 8000)),
-        reload=False
-    )
+    # Запуск бота
+    asyncio.run(dp.start_polling(bot))

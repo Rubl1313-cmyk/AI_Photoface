@@ -23,12 +23,6 @@ COPY requirements.txt .
 # Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Установка FaceFusion
-RUN git clone https://github.com/facefusion/facefusion.git /tmp/facefusion && \
-    cd /tmp/facefusion && \
-    pip install -r requirements.txt && \
-    python install.py --skip-ffmpeg
-
 # Копирование файлов проекта
 COPY . .
 
@@ -43,4 +37,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # Запуск приложения
-CMD ["python", "railway_main.py"]
+CMD ["python", "main.py"]

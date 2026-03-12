@@ -64,5 +64,12 @@ class UsageTracker:
             f"📈 [{bar}] {percent:.0f}%\n"
             f"✅ `{used}` / ❌ `{remaining}` из `{self.daily_limit}`"
         )
+    
+    # Алиасы для совместимости
+    def get_usage(self, user_id: int) -> int:
+        return self.get_count(user_id)
+    
+    def record_generation(self, user_id: int):
+        self.increment(user_id)
 
 tracker = UsageTracker(daily_limit=int(os.getenv("DAILY_LIMIT", "50")))
