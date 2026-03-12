@@ -11,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
 
-# Конфигурации моделей
-MODEL_SDXL = "@cf/stabilityai/stable-diffusion-xl-base-1.0"      # максимальное качество
-MODEL_FLUX_SCHNELL = "@cf/black-forest-labs/flux-1-schnell"      # быстрая, без референса
+# Константы для моделей (используются только для AIMage, т.к. для img2img модель задаётся в Worker)
+MODEL_FLUX_SCHNELL = "@cf/black-forest-labs/flux-1-schnell"
 
 # ================== ПОДГОТОВКА ИЗОБРАЖЕНИЯ ==================
 
@@ -36,7 +35,7 @@ def prepare_reference_image(image_bytes: bytes, target_size: int = 768) -> bytes
         new_img.paste(img, (left, top))
 
         output = io.BytesIO()
-        new_img.save(output, format="JPEG", quality=85, optimize=True)  # качество 85
+        new_img.save(output, format="JPEG", quality=85, optimize=True)
         return output.getvalue()
     except Exception as e:
         logger.error(f"❌ Image preparation error: {e}")
@@ -48,7 +47,7 @@ async def send_task(
     prompt: str,
     callback_url: str,
     reference_image: Optional[bytes] = None,
-    model: str = MODEL_SDXL,
+    model: Optional[str] = None,  # если None, Worker использует модель по умолчанию (stable-diffusion-v1-5-img2img)
     width: int = 1024,
     height: int = 1024,
     steps: int = 20,
@@ -61,7 +60,7 @@ async def send_task(
     """
     ref_b64 = None
     if reference_image:
-        prepared = prepare_reference_image(reference_image, target_size=768)  # уменьшено
+        prepared = prepare_reference_image(reference_image, target_size=768)
         ref_b64 = base64.b64encode(prepared).decode()
         logger.info(f"📦 Размер base64 изображения: {len(ref_b64)} байт")
 
@@ -69,7 +68,6 @@ async def send_task(
         "prompt": prompt,
         "reference_image": ref_b64,
         "callback_url": callback_url,
-        "model": model,
         "width": min(1024, width),
         "height": min(1024, height),
         "steps": steps,
@@ -77,6 +75,8 @@ async def send_task(
         "strength": strength,
         "negative_prompt": negative_prompt
     }
+    if model:
+        payload["model"] = model  # для AIMage передаём FLUX
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -109,12 +109,13 @@ async def generate_photoshoot(
     negative_prompt: str = "",
     strength: float = 0.7
 ) -> Optional[str]:
-    """AI Photoshoot: максимальный фотореализм через SDXL"""
+    """
+    AI Photoshoot: использует stable-diffusion-v1-5-img2img (модель по умолчанию в Worker)
+    """
     return await send_task(
         prompt=prompt,
         reference_image=reference_image,
         callback_url=callback_url,
-        model=MODEL_SDXL,
         width=width,
         height=height,
         steps=20,
@@ -132,12 +133,13 @@ async def generate_style(
     strength: float = 0.85,
     negative_prompt: str = ""
 ) -> Optional[str]:
-    """AI Styles: стилизация через SDXL"""
+    """
+    AI Styles: также использует stable-diffusion-v1-5-img2img
+    """
     return await send_task(
         prompt=prompt,
         reference_image=reference_image,
         callback_url=callback_url,
-        model=MODEL_SDXL,
         width=width,
         height=height,
         steps=20,
@@ -152,12 +154,14 @@ async def generate_ai_image(
     width: int = 1024,
     height: int = 1024
 ) -> Optional[str]:
-    """AIMage: быстрая генерация без референса через FLUX.1-schnell"""
+    """
+    AIMage: быстрая генерация без референса через FLUX.1-schnell
+    """
     return await send_task(
         prompt=prompt,
         reference_image=None,
         callback_url=callback_url,
-        model=MODEL_FLUX_SCHNELL,
+        model=MODEL_FLUX_SCHNELL,  # явно указываем FLUX
         width=width,
         height=height,
         steps=4,
