@@ -33,7 +33,7 @@ def prepare_reference_image(image_bytes: bytes, target_size: int = 512) -> bytes
         logger.error(f"❌ Image preparation error: {e}")
         return image_bytes
 
-# ================== ГЕНЕРАЦИЯ С FLUX.2 (с референсом) ==================
+# ================== ОСНОВНЫЕ ФУНКЦИИ ДЛЯ FLUX ==================
 
 async def generate_flux_klein(
     prompt: str,
@@ -43,7 +43,7 @@ async def generate_flux_klein(
     guidance: float = 7.5
 ) -> Optional[bytes]:
     """
-    Генерация с FLUX.2-klein для AI Photoshoot и AI Styles.
+    Генерация с FLUX.2-klein (с референсом).
     Возвращает бинарное изображение или None при ошибке.
     """
     # Подготавливаем изображение, если есть
@@ -73,8 +73,6 @@ async def generate_flux_klein(
                 logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
                 return None
 
-# ================== ГЕНЕРАЦИЯ С FLUX.1 (без референса) ==================
-
 async def generate_flux_schnell(
     prompt: str,
     width: int = 1024,
@@ -83,7 +81,7 @@ async def generate_flux_schnell(
     guidance: float = 3.5
 ) -> Optional[bytes]:
     """
-    Генерация с FLUX.1-schnell для AIMage.
+    Генерация с FLUX.1-schnell (без референса).
     Возвращает бинарное изображение или None при ошибке.
     """
     payload = {
@@ -102,3 +100,41 @@ async def generate_flux_schnell(
                 error_text = await resp.text()
                 logger.error(f"❌ FLUX.1 error {resp.status}: {error_text}")
                 return None
+
+# ================== ОБЁРТКИ ДЛЯ ТРЁХ РЕЖИМОВ (для совместимости с main.py) ==================
+
+async def generate_photoshoot(
+    prompt: str,
+    reference_image: bytes,
+    width: int = 768,
+    height: int = 1024,
+    guidance: float = 7.5
+) -> Optional[bytes]:
+    """
+    Режим AI Photoshoot (фотореализм). Использует FLUX.2-klein.
+    """
+    return await generate_flux_klein(prompt, reference_image, width, height, guidance)
+
+async def generate_style(
+    prompt: str,
+    reference_image: bytes,
+    width: int = 1024,
+    height: int = 576,
+    guidance: float = 7.5
+) -> Optional[bytes]:
+    """
+    Режим AI Styles. Использует FLUX.2-klein.
+    """
+    return await generate_flux_klein(prompt, reference_image, width, height, guidance)
+
+async def generate_ai_image(
+    prompt: str,
+    width: int = 1024,
+    height: int = 1024,
+    steps: int = 4,
+    guidance: float = 3.5
+) -> Optional[bytes]:
+    """
+    Режим AIMage (генерация без референса). Использует FLUX.1-schnell.
+    """
+    return await generate_flux_schnell(prompt, width, height, steps, guidance)
