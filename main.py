@@ -37,6 +37,9 @@ from prompts import (
     build_ai_styles_prompt
 )
 
+logger.info(f"DEBUG: Все переменные окружения: {list(os.environ.keys())}")
+logger.info(f"DEBUG: PUBLIC_URL = {os.getenv('PUBLIC_URL')}")
+
 # Константы
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(exist_ok=True)
