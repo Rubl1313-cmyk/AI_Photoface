@@ -92,25 +92,45 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "ai_photoshoot")
 async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_photoshoot_face)
-    await callback.message.edit_text(
-        "📸 **AI Photoshoot - Фотореализм**\n\n"
-        "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-        "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
-        "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
-        parse_mode="Markdown"
-    )
+    
+    try:
+        await callback.message.edit_text(
+            "📸 **AI Photoshoot - Фотореализм**\n\n"
+            "🎯 Создаю профессиональные фотографии с твоим лицом\n"
+            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
+            "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
+            parse_mode="Markdown"
+        )
+    except:
+        await callback.message.answer(
+            "📸 **AI Photoshoot - Фотореализм**\n\n"
+            "🎯 Создаю профессиональные фотографии с твоим лицом\n"
+            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
+            "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
+            parse_mode="Markdown"
+        )
 
 # AI Styles - референс + стили
 @dp.callback_query(F.data == "ai_styles")
 async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_ai_styles_face)
-    await callback.message.edit_text(
-        "🎨 **AI Styles - Популярные стили 2026**\n\n"
-        "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-        "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
-        "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
-        parse_mode="Markdown"
-    )
+    
+    try:
+        await callback.message.edit_text(
+            "🎨 **AI Styles - Популярные стили 2026**\n\n"
+            "🎯 Создаю изображения с твоим лицом в разных стилях\n"
+            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
+            "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
+            parse_mode="Markdown"
+        )
+    except:
+        await callback.message.answer(
+            "🎨 **AI Styles - Популярные стили 2026**\n\n"
+            "🎯 Создаю изображения с твоим лицом в разных стилях\n"
+            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
+            "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
+            parse_mode="Markdown"
+        )
 
 # AIMage
 @dp.callback_query(F.data == "ai_image")
@@ -190,14 +210,24 @@ async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMConte
     await state.set_state(UserStates.selecting_photoshoot_format)
     examples_text = "\n".join([f"• {ex}" for ex in style["examples"]])
     
-    await callback.message.edit_text(
-        f"📸 **{style['name']}**\n\n"
-        f"📝 {style['description']}\n\n"
-        f"💡 **Примеры локаций:**\n{examples_text}\n\n"
-        f"📐 **Теперь выбери формат:**",
-        reply_markup=get_photoshoot_formats_keyboard(),
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📸 **{style['name']}**\n\n"
+            f"📝 {style['description']}\n\n"
+            f"💡 **Примеры локаций:**\n{examples_text}\n\n"
+            f"📐 **Теперь выбери формат:**",
+            reply_markup=get_photoshoot_formats_keyboard(),
+            parse_mode="Markdown"
+        )
+    except:
+        await callback.message.answer(
+            f"📸 **{style['name']}**\n\n"
+            f"📝 {style['description']}\n\n"
+            f"💡 **Примеры локаций:**\n{examples_text}\n\n"
+            f"📐 **Теперь выбери формат:**",
+            reply_markup=get_photoshoot_formats_keyboard(),
+            parse_mode="Markdown"
+        )
 
 # AI Photoshoot - выбор формата
 @dp.callback_query(F.data.startswith("photoshoot_format_"))
@@ -214,20 +244,36 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
     # Запрашиваем пользовательский промпт
     await state.set_state(UserStates.waiting_for_photoshoot_prompt)
     
-    await callback.message.edit_text(
-        f"📐 **{format_info['name']}**\n\n"
-        f"📝 {format_info['description']}\n\n"
-        f"✍️ **Добавь детали для генерации:**\n"
-        f"• Где находится? (на крыше, в кафе, на пляже)\n"
-        f"• Во что одет? (в джинсах, в вечернем платье)\n"
-        f"• Какое настроение? (счастливый, задумчивый)\n"
-        f"• Освещение? (естественное, неоновое)\n\n"
-        f"👇 *Напиши детали или нажми кнопку ниже*",
-        reply_markup=InlineKeyboardBuilder().row(
-            InlineKeyboardButton(text="✅ Готово", callback_data="photoshoot_ready")
-        ).as_markup(),
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📐 **{format_info['name']}**\n\n"
+            f"📝 {format_info['description']}\n\n"
+            f"✍️ **Добавь детали для генерации:**\n"
+            f"• Где находится? (на крыше, в кафе, на пляже)\n"
+            f"• Во что одет? (в джинсах, в вечернем платье)\n"
+            f"• Какое настроение? (счастливый, задумчивый)\n"
+            f"• Освещение? (естественное, неоновое)\n\n"
+            f"👇 *Напиши детали или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="photoshoot_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
+    except:
+        await callback.message.answer(
+            f"📐 **{format_info['name']}**\n\n"
+            f"📝 {format_info['description']}\n\n"
+            f"✍️ **Добавь детали для генерации:**\n"
+            f"• Где находится? (на крыше, в кафе, на пляже)\n"
+            f"• Во что одет? (в джинсах, в вечернем платье)\n"
+            f"• Какое настроение? (счастливый, задумчивый)\n"
+            f"• Освещение? (естественное, неоновое)\n\n"
+            f"👇 *Напиши детали или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="photoshoot_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
 
 # AI Styles - выбор стиля
 @dp.callback_query(F.data.startswith("ai_style_"))
@@ -244,19 +290,34 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
     # Запрашиваем пользовательский промпт
     await state.set_state(UserStates.waiting_for_ai_styles_prompt)
     
-    await callback.message.edit_text(
-        f"🎨 **{style['name']}**\n\n"
-        f"📝 {style['description']}\n\n"
-        f"✍️ **Добавь детали для генерации:**\n"
-        f"• Что еще добавить? (дополнительные элементы)\n"
-        f"• Какое настроение? (яркое, мрачное, мистическое)\n"
-        f"• Особенности? (фон, детали, атмосфера)\n\n"
-        f"👇 *Напиши детали или нажми кнопку ниже*",
-        reply_markup=InlineKeyboardBuilder().row(
-            InlineKeyboardButton(text="✅ Готово", callback_data="ai_styles_ready")
-        ).as_markup(),
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            f"🎨 **{style['name']}**\n\n"
+            f"📝 {style['description']}\n\n"
+            f"✍️ **Добавь детали для генерации:**\n"
+            f"• Что еще добавить? (дополнительные элементы)\n"
+            f"• Какое настроение? (яркое, мрачное, мистическое)\n"
+            f"• Особенности? (фон, детали, атмосфера)\n\n"
+            f"👇 *Напиши детали или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="ai_styles_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
+    except:
+        await callback.message.answer(
+            f"🎨 **{style['name']}**\n\n"
+            f"📝 {style['description']}\n\n"
+            f"✍️ **Добавь детали для генерации:**\n"
+            f"• Что еще добавить? (дополнительные элементы)\n"
+            f"• Какое настроение? (яркое, мрачное, мистическое)\n"
+            f"• Особенности? (фон, детали, атмосфера)\n\n"
+            f"👇 *Напиши детали или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="ai_styles_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
 
 # Обработчики кнопок "Готово"
 @dp.callback_query(F.data == "photoshoot_ready")
