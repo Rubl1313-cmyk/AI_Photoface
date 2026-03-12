@@ -174,49 +174,33 @@ async def generate_with_flux_klein(
         ref_b64 = base64.b64encode(compressed_ref).decode()
         data["image_b64"] = ref_b64
         
-        # Создаем маску для лица
-        mask_b64 = create_face_mask(compressed_ref)
-        if mask_b64:
-            data["mask_b64"] = mask_b64
     
     model_type = "с референсом" if reference_image else "без референса"
     logger.info(f"🎯 FLUX.2-klein ({model_type}): {prompt[:50]}...")
     
     async with httpx.AsyncClient(timeout=300) as client:
         try:
+            # ✅ ОТПРАВЛЯЕМ JSON (не form-urlencoded!)
             resp = await client.post(
                 url,
-                json=data,  # Отправляем как JSON
+                json=data,  # ✅ JSON вместо data=
                 headers={"Content-Type": "application/json"}
             )
             resp.raise_for_status()
-            
             result = resp.json()
+            
             if result.get("success") and result.get("images"):
                 image_b64 = result["images"][0]
                 
-                # Проверка на пустой base64
-                if not image_b64 or len(image_b64) < 1000:
-                    logger.error(f"❌ Invalid/empty image base64 (length: {len(image_b64) if image_b64 else 0})")
+                # Валидация base64 - исправляю проверку
+                if len(image_b64) < 1000:
+                    logger.error(f"❌ Invalid base64 image (len={len(image_b64)})")
                     return None
                 
-                try:
-                    image_bytes = base64.b64decode(image_b64)
-                    
-                    # Проверка что это действительно изображение
-                    test_img = Image.open(io.BytesIO(image_bytes))
-                    width, height = test_img.size
-                    logger.info(f"📐 Image size: {width}x{height}")
-                    
-                    # Улучшение качества с режимом для фотосессии
-                    enhanced = enhance_image_quality(image_bytes, mode="photoshoot")
-                    
-                    logger.info(f"✅ FLUX.2-klein success: {len(enhanced)} bytes")
-                    return enhanced
-                    
-                except Exception as e:
-                    logger.error(f"❌ Image processing error: {e}")
-                    return None
+                image_bytes = base64.b64decode(image_b64)
+                enhanced = enhance_image_quality(image_bytes, mode="photoshoot")
+                logger.info(f"✅ FLUX.2-klein success: {len(enhanced)} bytes")
+                return enhanced
             else:
                 logger.error(f"❌ FLUX.2-klein error: {result}")
                 return None
