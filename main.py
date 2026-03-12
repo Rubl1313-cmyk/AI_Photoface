@@ -422,7 +422,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             height=format_info["height"],
             steps=28,
             guidance=7.5,
-            negative_prompt=negative_prompt
+            negative_prompt=negative_prompt,
             enhance_mode="photoshoot"
         )
         
