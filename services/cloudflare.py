@@ -21,7 +21,7 @@ CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.
 
 # Модель для img2img (можно переопределить через переменную окружения)
 # Доступные варианты: "dreamshaper", "sdxl", "lightning"
-IMG2IMG_MODEL = os.getenv("IMG2IMG_MODEL", "dreamshaper").lower()
+IMG2IMG_MODEL = os.getenv("IMG2IMG_MODEL", "sdxl").lower()
 
 # Словарь с параметрами моделей
 MODEL_CONFIGS = {
@@ -135,8 +135,8 @@ def compress_image(image_bytes: bytes, max_kb: int = 400) -> bytes:
 async def generate_img2img(
     prompt: str,
     reference_image: Optional[bytes] = None,
-    width: int = 1024,
-    height: int = 1024,
+    width: int = 768,
+    height: int = 768,
     steps: Optional[int] = None,
     guidance: Optional[float] = None,
     strength: float = 0.7,
@@ -147,14 +147,14 @@ async def generate_img2img(
     Универсальная генерация с выбранной img2img моделью.
     Параметры steps и guidance берутся из конфига модели, если не указаны явно.
     """
-    config = MODEL_CONFIGS.get(IMG2IMG_MODEL, MODEL_CONFIGS["dreamshaper"])
+    config = MODEL_CONFIGS.get(IMG2IMG_MODEL, MODEL_CONFIGS["sdxl"])
     model_name = config["name"]
     
     data = {
         "prompt": prompt.strip(),
         "model": model_name,
-        "width": min(1024, width),
-        "height": min(1024, height),
+        "width": min(768, width),
+        "height": min(768, height),
         "num_steps": steps if steps is not None else config["default_steps"],
         "guidance": guidance if guidance is not None else config["default_guidance"],
         "strength": strength,
