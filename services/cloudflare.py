@@ -2,8 +2,9 @@
 """
 Сервис для работы с Cloudflare Workers AI.
 Поддерживает:
-- Stable Diffusion XL Base 1.0 (img2img) для AI Photoshoot и AI Styles
+- Dreamshaper-8-LCM (быстрая img2img) для AI Photoshoot и AI Styles
 - FLUX.1-schnell (text-to-image) для AIMage
+- Возможность выбора модели img2img через переменную окружения IMG2IMG_MODEL
 """
 import httpx
 import base64
@@ -17,6 +18,35 @@ logger = logging.getLogger(__name__)
 
 # Константы
 CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
+
+# Модель для img2img (можно переопределить через переменную окружения)
+# Доступные варианты: "dreamshaper", "sdxl", "lightning"
+IMG2IMG_MODEL = os.getenv("IMG2IMG_MODEL", "dreamshaper").lower()
+
+# Словарь с параметрами моделей
+MODEL_CONFIGS = {
+    "dreamshaper": {
+        "name": "@cf/lykon/dreamshaper-8-lcm",
+        "default_steps": 12,
+        "default_guidance": 7.5,
+        "strength_range": (0.0, 1.0),
+        "description": "Быстрая модель, хороша для стилей и фотореализма"
+    },
+    "sdxl": {
+        "name": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        "default_steps": 20,
+        "default_guidance": 7.5,
+        "strength_range": (0.0, 1.0),
+        "description": "Высокое качество, но медленнее"
+    },
+    "lightning": {
+        "name": "@cf/bytedance/stable-diffusion-xl-lightning",
+        "default_steps": 8,
+        "default_guidance": 3.5,
+        "strength_range": (0.0, 1.0),
+        "description": "Очень быстрая, немного уступает в деталях"
+    }
+}
 
 # ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 
@@ -45,10 +75,7 @@ def prepare_reference_image(image_bytes: bytes, target_size: int = 1024) -> byte
         return image_bytes
 
 def enhance_image_quality(image_bytes: bytes, mode: str = "auto") -> bytes:
-    """
-    Улучшение качества изображения
-    mode: 'auto' (AIMage), 'photoshoot' (фотореализм), 'styles' (стили)
-    """
+    """Улучшение качества изображения (без изменений)"""
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
@@ -83,7 +110,7 @@ def enhance_image_quality(image_bytes: bytes, mode: str = "auto") -> bytes:
         return image_bytes
 
 def compress_image(image_bytes: bytes, max_kb: int = 400) -> bytes:
-    """Сжатие изображения (уменьшение веса)"""
+    """Сжатие изображения"""
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         w, h = img.size
@@ -103,31 +130,33 @@ def compress_image(image_bytes: bytes, max_kb: int = 400) -> bytes:
         logger.error(f"❌ Compression error: {e}")
         return image_bytes
 
-# ================== ГЕНЕРАЦИЯ С SDXL (С РЕФЕРЕНСОМ) ==================
+# ================== УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ IMG2IMG ==================
 
-async def generate_with_sdxl(
+async def generate_img2img(
     prompt: str,
     reference_image: Optional[bytes] = None,
     width: int = 1024,
     height: int = 1024,
-    steps: int = 20,
-    guidance: float = 7.5,
+    steps: Optional[int] = None,
+    guidance: Optional[float] = None,
     strength: float = 0.7,
     negative_prompt: str = "",
     enhance_mode: str = "photoshoot"
 ) -> Optional[bytes]:
     """
-    Генерация с Stable Diffusion XL Base 1.0 через Cloudflare Workers AI.
-    Параметры:
-        strength: 0.0 (макс. сохранение) – 1.0 (мин. сохранение). Для лица рекомендуется 0.6–0.8.
+    Универсальная генерация с выбранной img2img моделью.
+    Параметры steps и guidance берутся из конфига модели, если не указаны явно.
     """
+    config = MODEL_CONFIGS.get(IMG2IMG_MODEL, MODEL_CONFIGS["dreamshaper"])
+    model_name = config["name"]
+    
     data = {
         "prompt": prompt.strip(),
-        "model": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        "model": model_name,
         "width": min(1024, width),
         "height": min(1024, height),
-        "num_steps": min(20, max(1, int(steps))),
-        "guidance": guidance,
+        "num_steps": steps if steps is not None else config["default_steps"],
+        "guidance": guidance if guidance is not None else config["default_guidance"],
         "strength": strength,
     }
     
@@ -140,7 +169,7 @@ async def generate_with_sdxl(
         data["image_b64"] = base64.b64encode(compressed).decode()
         logger.info(f"📎 Reference image added (image_b64): {len(data['image_b64'])} chars")
     
-    logger.info(f"🎨 SDXL ({enhance_mode}, strength={strength}): {prompt[:50]}...")
+    logger.info(f"🎨 {model_name} ({enhance_mode}, strength={strength}, steps={data['num_steps']}): {prompt[:50]}...")
     
     async with httpx.AsyncClient(timeout=300) as client:
         try:
@@ -159,13 +188,13 @@ async def generate_with_sdxl(
                     return None
                 image_bytes = base64.b64decode(image_b64)
                 enhanced = enhance_image_quality(image_bytes, mode=enhance_mode)
-                logger.info(f"✅ SDXL success: {len(enhanced)} bytes")
+                logger.info(f"✅ {model_name} success: {len(enhanced)} bytes")
                 return enhanced
             else:
-                logger.error(f"❌ SDXL error: {result}")
+                logger.error(f"❌ {model_name} error: {result}")
                 return None
         except Exception as e:
-            logger.error(f"❌ SDXL error: {e}")
+            logger.error(f"❌ {model_name} error: {e}")
             return None
 
 # ================== ГЕНЕРАЦИЯ С FLUX.1-SCHNELL (БЕЗ РЕФЕРЕНСА) ==================
@@ -224,18 +253,19 @@ async def generate_best_quality(
 ) -> Optional[bytes]:
     """
     Автоматический выбор модели в зависимости от категории:
-    - "photoshoot", "ai_styles" → SDXL (с референсом)
-    - иначе → FLUX.1-schnell (без референса)
+    - "photoshoot", "ai_styles" → img2img модель (настраиваемая через IMG2IMG_MODEL)
+    - иначе → FLUX.1-schnell
     """
     if category in ["photoshoot", "ai_styles"]:
         enhance_mode = "photoshoot" if category == "photoshoot" else "styles"
-        return await generate_with_sdxl(
+        # Для стилей можно увеличить strength
+        if category == "ai_styles":
+            strength = max(strength, 0.8)  # чуть выше для стилизации
+        return await generate_img2img(
             prompt=prompt,
             reference_image=reference_image,
             width=width,
             height=height,
-            steps=20,
-            guidance=7.5,
             strength=strength,
             negative_prompt=negative_prompt,
             enhance_mode=enhance_mode
