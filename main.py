@@ -5,7 +5,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-import sys
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
@@ -14,7 +13,7 @@ from aiogram.types import BufferedInputFile, ReplyKeyboardRemove, InlineKeyboard
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import config
-from services.cloudflare import generate_with_flux_klein, generate_with_flux_schnell
+from services.cloudflare import generate_best_quality, generate_with_flux_schnell
 from services import UsageTracker
 from states import UserStates
 from keyboards import (
@@ -63,7 +62,7 @@ async def send_photo(message: types.Message, photo: BufferedInputFile, caption: 
     try:
         await message.answer_photo(
             photo=photo,
-            caption=caption[:1024],  # Telegram лимит для caption
+            caption=caption[:1024],
             reply_markup=reply_markup
         )
     except Exception as e:
@@ -83,7 +82,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "🎨 **AI Styles** - популярные стили с референсом\n"
         "🎯 **AIMage** - генерация по промпту\n\n"
         f"💡 *Лимит: {usage.daily_limit} фото в день!*\n"
-        "🚀 *FLUX.2-klein и FLUX.1-schnell технологии!*",
+        "🚀 *Stable Diffusion XL + FLUX.1-schnell технологии!*",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
@@ -97,7 +96,7 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
         await callback.message.edit_text(
             "📸 **AI Photoshoot - Фотореализм**\n\n"
             "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
+            "💡 *Использую Stable Diffusion XL для максимального качества!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -105,7 +104,7 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
         await callback.message.answer(
             "📸 **AI Photoshoot - Фотореализм**\n\n"
             "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
+            "💡 *Использую Stable Diffusion XL для максимального качества!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -119,7 +118,7 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             "🎨 **AI Styles - Популярные стили 2026**\n\n"
             "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
+            "💡 *Использую Stable Diffusion XL и формат 16:9!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -127,7 +126,7 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer(
             "🎨 **AI Styles - Популярные стили 2026**\n\n"
             "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
+            "💡 *Использую Stable Diffusion XL и формат 16:9!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -137,7 +136,6 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
 async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_ai_image_prompt)
     
-    # Проверяем есть ли текст в сообщении, если нет - отправляем новое
     try:
         await callback.message.edit_text(
             "🎨 **AIMage - Генерация по промпту**\n\n"
@@ -150,7 +148,6 @@ async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
             parse_mode="Markdown"
         )
     except:
-        # Если не можем отредактировать, отправляем новое сообщение
         await callback.message.answer(
             "🎨 **AIMage - Генерация по промпту**\n\n"
             "🎯 Создаю изображения по твоему описанию\n"
@@ -232,7 +229,7 @@ async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMConte
 # AI Photoshoot - выбор формата
 @dp.callback_query(F.data.startswith("photoshoot_format_"))
 async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMContext):
-    format_key = "_".join(callback.data.split("_")[2:])  # vertical_4_3 или horizontal_16_9
+    format_key = "_".join(callback.data.split("_")[2:])
     
     if format_key not in PHOTOSHOOT_FORMATS:
         await callback.answer("❌ Формат не найден", show_alert=True)
@@ -328,6 +325,10 @@ async def handle_photoshoot_ready(callback: types.CallbackQuery, state: FSMConte
 async def handle_ai_styles_ready(callback: types.CallbackQuery, state: FSMContext):
     await process_ai_styles_generation(callback.message, state, "")
 
+@dp.callback_query(F.data == "ai_image_ready")
+async def handle_ai_image_ready(callback: types.CallbackQuery, state: FSMContext):
+    await process_ai_image_generation(callback.message, state, "")
+
 # Обработчики текстовых сообщений
 @dp.message()
 async def handle_text_messages(message: types.Message, state: FSMContext):
@@ -373,14 +374,10 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
                 parse_mode="Markdown"
             )
 
-# Обработчики кнопок "Готово"
-@dp.callback_query(F.data == "ai_image_ready")
-async def handle_ai_image_ready(callback: types.CallbackQuery, state: FSMContext):
-    await process_ai_image_generation(callback.message, state, "")
+# ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
-# Функции генерации
 async def process_photoshoot_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
-    """Обработка генерации AI Photoshoot с FLUX.2-klein"""
+    """Обработка генерации AI Photoshoot с SDXL"""
     await state.set_state(UserStates.generating_photoshoot)
     await message.answer("📸 *Создаю профессиональные фотографии...*", parse_mode="Markdown")
     
@@ -405,44 +402,37 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             await state.set_state(UserStates.idle)
             return
         
-        # Получаем параметры формата
         format_info = PHOTOSHOOT_FORMATS[format_key]
-        
-        # Собираем финальный промпт (без позы, только селфи стиль)
         final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
         negative_prompt = get_photoshoot_negative_prompt(style_key)
         
         logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
         
-        # Генерируем с FLUX.2-klein с референсом
-        result_image = await generate_with_flux_klein(
+        # Генерация с SDXL
+        result_image = await generate_best_quality(
             prompt=final_prompt,
+            category="photoshoot",
             reference_image=face_photo,
             width=format_info["width"],
             height=format_info["height"],
-            steps=28,
-            guidance=7.5,
             negative_prompt=negative_prompt,
-            enhance_mode="photoshoot"
+            strength=0.7  # оптимально для сохранения лица
         )
         
         if result_image:
             style = PHOTOSHOOT_REALISM[style_key]
-            
             caption = (
                 f"📸 **{style['name']} готов!**\n\n"
                 f"📐 Формат: {format_info['name']}\n"
                 f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
-                f"✨ Создано с AI PhotoStudio 2.0 + FLUX.2-klein"
+                f"✨ Создано с AI PhotoStudio 2.0 + Stable Diffusion XL"
             )
-            
             await send_photo(
                 message,
                 BufferedInputFile(result_image, filename="photoshoot.jpg"),
                 caption=caption,
                 reply_markup=get_main_menu()
             )
-            
             usage.record_generation(user_id)
             logger.info(f"✅ AI Photoshoot completed for user {user_id}")
         else:
@@ -451,12 +441,11 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
     except Exception as e:
         logger.error(f"❌ AI Photoshoot error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
-    
     finally:
         await state.set_state(UserStates.idle)
 
 async def process_ai_styles_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
-    """Обработка генерации AI Styles с FLUX.2-klein"""
+    """Обработка генерации AI Styles с SDXL"""
     await state.set_state(UserStates.generating_ai_styles)
     await message.answer("🎨 *Создаю стилизованное изображение...*", parse_mode="Markdown")
     
@@ -471,7 +460,6 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             await state.set_state(UserStates.idle)
             return
         
-        # Проверка лимита
         user_id = message.from_user.id
         if not usage.can_generate(user_id):
             await message.answer(
@@ -480,38 +468,34 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             await state.set_state(UserStates.idle)
             return
         
-        # Собираем финальный промпт
         final_prompt = build_ai_styles_prompt(style_key, user_prompt)
-        
         logger.info(f"🎨 AI Styles: {style_key} - {final_prompt[:100]}...")
         
-        # Генерируем с FLUX.2-klein с референсом, формат 16:9
-        result_image = await generate_with_flux_klein(
+        # Генерация с SDXL (без негативного промпта, strength выше для стилизации)
+        result_image = await generate_best_quality(
             prompt=final_prompt,
+            category="ai_styles",
             reference_image=face_photo,
             width=1024,
-            height=576,  # 16:9 формат
-            steps=28,
-            guidance=7.5
+            height=576,  # 16:9
+            negative_prompt="",  # не ограничиваем стили
+            strength=0.85  # больше изменений для стиля
         )
         
         if result_image:
             style = AI_STYLES[style_key]
-            
             caption = (
                 f"🎨 **{style['name']} готов!**\n\n"
                 f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
                 f"📐 Формат: 16:9\n"
-                f"✨ Создано с AI PhotoStudio 2.0 + FLUX.2-klein"
+                f"✨ Создано с AI PhotoStudio 2.0 + Stable Diffusion XL"
             )
-            
             await send_photo(
                 message,
                 BufferedInputFile(result_image, filename="ai_styles.jpg"),
                 caption=caption,
                 reply_markup=get_main_menu()
             )
-            
             usage.record_generation(user_id)
             logger.info(f"✅ AI Styles completed for user {user_id}")
         else:
@@ -520,17 +504,15 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
     except Exception as e:
         logger.error(f"❌ AI Styles error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
-    
     finally:
         await state.set_state(UserStates.idle)
 
-async def process_ai_image_generation(message: types.Message, state: FSMContext, prompt: str):
+async def process_ai_image_generation(message: types.Message, state: FSMContext, prompt: str = ""):
     """Обработка генерации AIMage с FLUX.1-schnell"""
     await state.set_state(UserStates.generating_ai_image)
     await message.answer("🎨 *Генерирую изображение...*", parse_mode="Markdown")
     
     try:
-        # Проверка лимита
         user_id = message.from_user.id
         if not usage.can_generate(user_id):
             await message.answer(
@@ -539,13 +521,17 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
             await state.set_state(UserStates.idle)
             return
         
-        # Промпт по умолчанию если пустой
+        # Если промпт не передан, берём из состояния
+        if not prompt:
+            data = await state.get_data()
+            prompt = data.get("ai_image_prompt", "")
+        
         if not prompt.strip():
             prompt = "beautiful digital art, high quality, detailed, vibrant colors, professional illustration"
         
         logger.info(f"🎨 AIMage: {prompt[:50]}...")
         
-        # Генерируем с FLUX.1-schnell (без референса!)
+        # Используем FLUX.1-schnell (без референса)
         result_image = await generate_with_flux_schnell(
             prompt=prompt,
             width=1024,
@@ -560,14 +546,12 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
                 f"📝 Промпт: `{prompt}`\n"
                 f"✨ Создано с AI PhotoStudio 2.0 + FLUX.1-schnell"
             )
-            
             await send_photo(
                 message,
                 BufferedInputFile(result_image, filename="ai_image.jpg"),
                 caption=caption,
                 reply_markup=get_main_menu()
             )
-            
             usage.record_generation(user_id)
             logger.info(f"✅ AIMage completed for user {user_id}")
         else:
@@ -576,18 +560,15 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
     except Exception as e:
         logger.error(f"❌ AIMage error: {e}")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
-    
     finally:
         await state.set_state(UserStates.idle)
 
 if __name__ == "__main__":
     from aiohttp import web
     
-    # Проверяем режим запуска (по умолчанию webhook для Railway)
     use_webhook = os.getenv("USE_WEBHOOK", "true").lower() == "true"
     
     if use_webhook:
-        # Webhook режим для Railway
         async def on_startup(app):
             webhook_url = config.WEBHOOK_URL
             if webhook_url:
@@ -596,25 +577,18 @@ if __name__ == "__main__":
             else:
                 logger.warning("⚠️ WEBHOOK_URL не установлен!")
         
-        # Не удаляем вебхук при завершении
         async def on_shutdown(app):
             logger.info("⏹️ Приложение остановлено (вебхук сохранен)")
         
         app = web.Application()
         
-        # Обработчик webhook для aiogram 3.x
         async def handle_webhook(request):
             try:
                 data = await request.json()
                 logger.info(f"📩 Получен webhook: {data.get('update_id', 'unknown')}")
-                
-                # Правильный импорт для aiogram 3.x
                 from aiogram.types import Update
                 update = Update(**data)
-                
-                # Обрабатываем update через диспетчер
                 await dp.feed_update(bot, update)
-                
                 return web.Response(text="OK")
             except Exception as e:
                 logger.error(f"❌ Webhook error: {e}")
@@ -623,12 +597,10 @@ if __name__ == "__main__":
                 return web.Response(text="Error", status=500)
         
         app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
-        
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
         
         port = int(os.getenv("PORT", 8000))
         web.run_app(app, host="0.0.0.0", port=port)
     else:
-        # Polling режим для локальной разработки
         asyncio.run(dp.start_polling(bot))
