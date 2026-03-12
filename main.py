@@ -5,7 +5,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-import base64
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
@@ -48,9 +47,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logger.info(f"DEBUG: Все переменные окружения: {list(os.environ.keys())}")
-logger.info(f"DEBUG: PUBLIC_URL = {os.getenv('PUBLIC_URL')}")
-
 # Инициализация бота
 BOT_TOKEN = config.BOT_TOKEN
 if not BOT_TOKEN:
@@ -62,17 +58,6 @@ dp = Dispatcher()
 
 # Инициализация трекера использования
 usage = UsageTracker()
-
-# Хранилище ожидающих задач: job_id -> (chat_id, user_id, category, style_key, user_prompt)
-pending_jobs = {}
-
-# Публичный URL для callback (задаётся в переменной окружения, например https://your-bot-domain.com)
-PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip('/')
-if not PUBLIC_URL:
-    logger.error("❌ PUBLIC_URL не установлен! Необходим для callback от Worker.")
-    exit(1)
-
-CALLBACK_URL = f"{PUBLIC_URL}/callback"
 
 # Отправка фото с caption
 async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
@@ -87,72 +72,6 @@ async def send_photo(message: types.Message, photo: BufferedInputFile, caption: 
         logger.error(f"Error sending photo: {e}")
         await message.answer("❌ Ошибка отправки фото")
 
-# ================== WEBHOOK / CALLBACK ==================
-
-async def handle_callback(request):
-    """Эндпоинт для приёма результатов от Cloudflare Worker"""
-    try:
-        data = await request.json()
-        job_id = data.get("jobId")
-        status = data.get("status")
-
-        if not job_id or job_id not in pending_jobs:
-            logger.warning(f"Unknown or missing job_id: {job_id}")
-            return web.Response(text="OK")
-
-        chat_id, user_id, category, style_key, user_prompt = pending_jobs.pop(job_id)
-
-        if status == "completed":
-            image_base64 = data.get("image")
-            if not image_base64:
-                logger.error(f"No image in completed job {job_id}")
-                await bot.send_message(chat_id, "❌ Ошибка: получен пустой результат")
-                return web.Response(text="OK")
-
-            image_bytes = base64.b64decode(image_base64)
-
-            # Формируем caption в зависимости от категории
-            if category == "photoshoot":
-                style = PHOTOSHOOT_REALISM[style_key]
-                caption = (
-                    f"📸 **{style['name']} готов!**\n\n"
-                    f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
-                    f"✨ Создано с AI PhotoStudio 2.0 + SDXL"
-                )
-            elif category == "ai_styles":
-                style = AI_STYLES[style_key]
-                caption = (
-                    f"🎨 **{style['name']} готов!**\n\n"
-                    f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
-                    f"✨ Создано с AI PhotoStudio 2.0 + SDXL"
-                )
-            else:  # aimage
-                caption = (
-                    f"🎨 **Генерация завершена!**\n\n"
-                    f"📝 Промпт: `{user_prompt}`\n"
-                    f"✨ Создано с AI PhotoStudio 2.0 + FLUX.1-schnell"
-                )
-
-            await bot.send_photo(
-                chat_id,
-                BufferedInputFile(image_bytes, filename="result.jpg"),
-                caption=caption,
-                reply_markup=get_main_menu()
-            )
-            usage.record_generation(user_id)
-            logger.info(f"✅ Job {job_id} completed for user {user_id}")
-
-        elif status == "failed":
-            error = data.get("error", "Unknown error")
-            await bot.send_message(chat_id, f"❌ Ошибка генерации: {error}")
-            logger.error(f"Job {job_id} failed: {error}")
-
-        return web.Response(text="OK")
-
-    except Exception as e:
-        logger.error(f"Callback error: {e}")
-        return web.Response(text="OK", status=500)
-
 # ================== ОБРАБОТЧИКИ КОМАНД ==================
 
 @dp.message(CommandStart())
@@ -166,7 +85,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "🎨 **AI Styles** - популярные стили с референсом\n"
         "🎯 **AIMage** - генерация по промпту\n\n"
         f"💡 *Лимит: {usage.daily_limit} фото в день!*\n"
-        "🚀 *Stable Diffusion XL + FLUX.1-schnell технологии!*",
+        "🚀 *FLUX.2 и FLUX.1 технологии!*",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
@@ -179,7 +98,7 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
         await callback.message.edit_text(
             "📸 **AI Photoshoot - Фотореализм**\n\n"
             "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-            "💡 *Использую Stable Diffusion XL для максимального качества!*\n\n"
+            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -187,7 +106,7 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
         await callback.message.answer(
             "📸 **AI Photoshoot - Фотореализм**\n\n"
             "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-            "💡 *Использую Stable Diffusion XL для максимального качества!*\n\n"
+            "💡 *Использую FLUX.2-klein для максимального качества!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -200,7 +119,7 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             "🎨 **AI Styles - Популярные стили 2026**\n\n"
             "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-            "💡 *Использую Stable Diffusion XL и формат 16:9!*\n\n"
+            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -208,7 +127,7 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer(
             "🎨 **AI Styles - Популярные стили 2026**\n\n"
             "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-            "💡 *Использую Stable Diffusion XL и формат 16:9!*\n\n"
+            "💡 *Использую FLUX.2-klein и формат 16:9!*\n\n"
             "👇 *Отправь своё фото* (хорошего качества, лицо видно четко)",
             parse_mode="Markdown"
         )
@@ -439,11 +358,11 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
                 parse_mode="Markdown"
             )
 
-# ================== ФУНКЦИИ ГЕНЕРАЦИИ (ЗАПУСК ЗАДАЧ) ==================
+# ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
 async def process_photoshoot_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_photoshoot)
-    await message.answer("📸 *Генерирую...*", parse_mode="Markdown")
+    await message.answer("📸 *Генерирую изображение...*", parse_mode="Markdown")
 
     try:
         data = await state.get_data()
@@ -453,7 +372,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         user_prompt = custom_prompt or data.get("photoshoot_prompt", "")
 
         if not face_photo:
-            await message.answer("❌ Фото не найдено")
+            await message.answer("❌ Фото не найдено. Начни заново")
             await state.set_state(UserStates.idle)
             return
 
@@ -465,8 +384,12 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
 
         format_info = PHOTOSHOOT_FORMATS[format_key]
         final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
+        # Негативный промпт не передаём, FLUX сам справится
 
-        image_bytes = await generate_flux_klein(
+        logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
+
+        # Генерируем изображение
+        image_bytes = await generate_photoshoot(
             prompt=final_prompt,
             reference_image=face_photo,
             width=format_info["width"],
@@ -476,21 +399,27 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
 
         if image_bytes:
             style = PHOTOSHOOT_REALISM[style_key]
-            caption = f"📸 **{style['name']} готов!**\n\n✨ Создано с FLUX.2-klein"
-            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            caption = (
+                f"📸 **{style['name']} готов!**\n\n"
+                f"📐 Формат: {format_info['name']}\n"
+                f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
+                f"✨ Создано с AI PhotoStudio 2.0 + FLUX.2-klein"
+            )
+            await send_photo(message, BufferedInputFile(image_bytes, "photoshoot.jpg"), caption, get_main_menu())
             usage.record_generation(user_id)
+            logger.info(f"✅ AI Photoshoot completed for user {user_id}")
         else:
             await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
-        logger.error(f"❌ AI Photoshoot error: {e}")
+        logger.exception("❌ Полная ошибка в AI Photoshoot:")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-        
+
 async def process_ai_styles_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_ai_styles)
-    await message.answer("🎨 *Генерирую...*", parse_mode="Markdown")
+    await message.answer("🎨 *Генерирую изображение...*", parse_mode="Markdown")
 
     try:
         data = await state.get_data()
@@ -499,7 +428,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
         user_prompt = custom_prompt or data.get("ai_styles_prompt", "")
 
         if not face_photo:
-            await message.answer("❌ Фото не найдено")
+            await message.answer("❌ Фото не найдено. Начни заново")
             await state.set_state(UserStates.idle)
             return
 
@@ -510,8 +439,9 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             return
 
         final_prompt = build_ai_styles_prompt(style_key, user_prompt)
+        logger.info(f"🎨 AI Styles: {style_key} - {final_prompt[:100]}...")
 
-        image_bytes = await generate_flux_klein(
+        image_bytes = await generate_style(
             prompt=final_prompt,
             reference_image=face_photo,
             width=1024,
@@ -521,21 +451,27 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
 
         if image_bytes:
             style = AI_STYLES[style_key]
-            caption = f"🎨 **{style['name']} готов!**\n\n✨ Создано с FLUX.2-klein"
-            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            caption = (
+                f"🎨 **{style['name']} готов!**\n\n"
+                f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
+                f"📐 Формат: 16:9\n"
+                f"✨ Создано с AI PhotoStudio 2.0 + FLUX.2-klein"
+            )
+            await send_photo(message, BufferedInputFile(image_bytes, "ai_styles.jpg"), caption, get_main_menu())
             usage.record_generation(user_id)
+            logger.info(f"✅ AI Styles completed for user {user_id}")
         else:
             await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
-        logger.error(f"❌ AI Styles error: {e}")
+        logger.exception("❌ Полная ошибка в AI Styles:")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-        
+
 async def process_ai_image_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_ai_image)
-    await message.answer("🎨 *Генерирую...*", parse_mode="Markdown")
+    await message.answer("🎨 *Генерирую изображение...*", parse_mode="Markdown")
 
     try:
         user_id = message.from_user.id
@@ -549,7 +485,9 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
         if not prompt.strip():
             prompt = "beautiful digital art, high quality, detailed, vibrant colors, professional illustration"
 
-        image_bytes = await generate_flux_schnell(
+        logger.info(f"🎨 AIMage: {prompt[:50]}...")
+
+        image_bytes = await generate_ai_image(
             prompt=prompt,
             width=1024,
             height=1024,
@@ -558,36 +496,43 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
         )
 
         if image_bytes:
-            caption = f"🎨 **Генерация завершена!**\n\n📝 `{prompt}`\n✨ Создано с FLUX.1-schnell"
-            await send_photo(message, BufferedInputFile(image_bytes, "result.jpg"), caption)
+            caption = (
+                f"🎨 **Генерация завершена!**\n\n"
+                f"📝 Промпт: `{prompt}`\n"
+                f"✨ Создано с AI PhotoStudio 2.0 + FLUX.1-schnell"
+            )
+            await send_photo(message, BufferedInputFile(image_bytes, "ai_image.jpg"), caption, get_main_menu())
             usage.record_generation(user_id)
+            logger.info(f"✅ AIMage completed for user {user_id}")
         else:
             await message.answer("❌ Ошибка генерации. Попробуй другой промпт")
 
     except Exception as e:
-        logger.error(f"❌ AIMage error: {e}")
+        logger.exception("❌ Полная ошибка в AIMage:")
         await message.answer("❌ Произошла ошибка. Попробуй ещё раз")
     finally:
         await state.set_state(UserStates.idle)
-        
+
 # ================== ЗАПУСК ==================
 
 if __name__ == "__main__":
-    from aiohttp import web
-
     use_webhook = os.getenv("USE_WEBHOOK", "true").lower() == "true"
 
     if use_webhook:
+        # Автоматическая установка вебхука при старте
         async def on_startup(app):
-            webhook_url = config.WEBHOOK_URL
-            if webhook_url:
+            # Берём URL из переменных окружения
+            public_url = os.getenv("PUBLIC_URL", "").rstrip('/')
+            webhook_path = config.WEBHOOK_PATH
+            if public_url:
+                webhook_url = f"{public_url}{webhook_path}"
                 await bot.set_webhook(webhook_url)
-                logger.info(f"✅ Webhook установлен: {webhook_url}")
+                logger.info(f"✅ Вебхук автоматически установлен: {webhook_url}")
             else:
-                logger.warning("⚠️ WEBHOOK_URL не установлен!")
+                logger.warning("⚠️ PUBLIC_URL не задан, вебхук не установлен. Используйте ручную установку.")
 
         async def on_shutdown(app):
-            logger.info("⏹️ Приложение остановлено (вебхук сохранен)")
+            logger.info("⏹️ Приложение остановлено (вебхук не удаляем)")
 
         app = web.Application()
 
@@ -601,22 +546,18 @@ if __name__ == "__main__":
                 await dp.feed_update(bot, update)
                 return web.Response(text="OK")
             except Exception as e:
-                logger.error(f"❌ Webhook error: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
+                logger.exception("❌ Webhook error:")
                 return web.Response(text="Error", status=500)
 
-        # Обработчик для callback от Worker (у вас уже есть)
-        app = web.Application(client_max_size=1024 * 1024 * 10) 
-        app.router.add_post("/callback", handle_callback)
-        # Обработчик для Telegram
         app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
 
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
 
-        port = int(os.getenv("PORT", 8080))
+        port = int(os.getenv("PORT", 8000))
+        logger.info(f"🚀 Запуск сервера на порту {port}")
         web.run_app(app, host="0.0.0.0", port=port)
     else:
-        # Для локального тестирования с polling
+        # Режим polling для локальной разработки
+        logger.info("🔄 Запуск в режиме polling")
         asyncio.run(dp.start_polling(bot))
