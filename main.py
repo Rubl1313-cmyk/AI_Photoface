@@ -477,7 +477,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             width=1024,
             height=576,
             strength=0.6,
-            steps=40,                     # добавляем
+            steps=20,                     # добавляем
             guidance=6.0,
         )
 
@@ -528,7 +528,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             width=1024,
             height=576,
             strength=0.7,
-            steps=40,                     # добавляем
+            steps=20,                     # добавляем
             guidance=5.0,
             negative_prompt=""  # для стилей не передаём негативный промпт
         )
