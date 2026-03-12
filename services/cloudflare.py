@@ -150,33 +150,37 @@ async def generate_with_flux_klein(
     """
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
-    payload = {
+    # Подготавливаем данные для multipart/form-data
+    data = {
         "prompt": prompt.strip(),
         "model": CF_MODELS["flux_klein"],
-        "width": min(1024, width),
-        "height": min(1024, height),
-        "num_steps": min(50, max(20, int(steps))),
-        "guidance_scale": guidance,
-        "num_outputs": 1
+        "width": str(min(1024, width)),
+        "height": str(min(1024, height)),
+        "num_steps": str(min(50, max(20, int(steps)))),
+        "guidance_scale": str(guidance),
+        "num_outputs": "1"
     }
-    
-    # Добавляем референсное изображение если есть
-    if reference_image:
-        compressed_ref = compress_image(reference_image)
-        ref_b64 = base64.b64encode(compressed_ref).decode()
-        payload["image_b64"] = ref_b64
-        
-        # Создаем маску для лица
-        mask_b64 = create_face_mask(compressed_ref)
-        if mask_b64:
-            payload["mask_b64"] = mask_b64
     
     # Улучшенный негативный промпт для фотореализма
     enhanced_negative = "cartoon, anime, painting, drawing, illustration, 3d, render, blurry, low quality, distorted face, artificial, plastic, wax figure, uncanny valley, oversaturated, unnatural colors, artifacts, noise, compression artifacts, watermark, signature, text, multiple faces, extra limbs, deformed hands, bad anatomy"
     full_negative = f"{enhanced_negative}, {negative_prompt}" if negative_prompt else enhanced_negative
     
     if full_negative:
-        payload["negative_prompt"] = full_negative.strip()
+        data["negative_prompt"] = full_negative.strip()
+    
+    # Файлы для multipart
+    files = {}
+    
+    # Добавляем референсное изображение если есть
+    if reference_image:
+        compressed_ref = compress_image(reference_image)
+        ref_b64 = base64.b64encode(compressed_ref).decode()
+        data["image_b64"] = ref_b64
+        
+        # Создаем маску для лица
+        mask_b64 = create_face_mask(compressed_ref)
+        if mask_b64:
+            data["mask_b64"] = mask_b64
     
     model_type = "с референсом" if reference_image else "без референса"
     logger.info(f"🎯 FLUX.2-klein ({model_type}): {prompt[:50]}...")
@@ -185,8 +189,8 @@ async def generate_with_flux_klein(
         try:
             resp = await client.post(
                 url,
-                json=payload,
-                headers={"Content-Type": "application/json"}
+                data=data,  # Отправляем как form-data, не файлы
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
             resp.raise_for_status()
             
