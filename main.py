@@ -46,7 +46,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Инициализация бота
-bot = Bot(token=config.BOT_TOKEN)
+BOT_TOKEN = config.BOT_TOKEN
+if not BOT_TOKEN:
+    logger.error("❌ BOT_TOKEN не установлен! Добавьте его в переменные окружения.")
+    exit(1)
+
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Инициализация трекера использования
@@ -461,5 +466,35 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
         await state.set_state(UserStates.idle)
 
 if __name__ == "__main__":
-    # Запуск бота
-    asyncio.run(dp.start_polling(bot))
+    from aiogram.webhook.aiohttp import AiohttpRequestHandler
+    from aiohttp import web
+    
+    # Проверяем режим запуска (по умолчанию webhook для Railway)
+    use_webhook = os.getenv("USE_WEBHOOK", "true").lower() == "true"
+    
+    if use_webhook:
+        # Webhook режим для Railway
+        async def on_startup(app):
+            webhook_url = config.WEBHOOK_URL
+            if webhook_url:
+                await bot.set_webhook(webhook_url)
+                logger.info(f"✅ Webhook установлен: {webhook_url}")
+            else:
+                logger.warning("⚠️ WEBHOOK_URL не установлен!")
+        
+        async def on_shutdown(app):
+            await bot.delete_webhook()
+            logger.info("✅ Webhook удален")
+        
+        app = web.Application()
+        webhook_handler = AiohttpRequestHandler(bot=bot, secret_token=os.getenv("WEBHOOK_SECRET", ""))
+        app.router.add_post(config.WEBHOOK_PATH, webhook_handler)
+        
+        app.on_startup.append(on_startup)
+        app.on_shutdown.append(on_shutdown)
+        
+        port = int(os.getenv("PORT", 8000))
+        web.run_app(app, host="0.0.0.0", port=port)
+    else:
+        # Polling режим для локальной разработки
+        asyncio.run(dp.start_polling(bot))

@@ -3,6 +3,7 @@
 aiogram>=3.4.1
 python-dotenv>=1.0.0
 httpx>=0.25.2
+aiohttp>=3.9.0
 
 # Обработка изображений
 Pillow>=10.1.0
