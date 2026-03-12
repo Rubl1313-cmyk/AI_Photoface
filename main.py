@@ -613,13 +613,31 @@ if __name__ == "__main__":
             logger.info("⏹️ Приложение остановлено (вебхук сохранен)")
 
         app = web.Application()
+
+        # Обработчик для вебхука от Telegram
+        async def handle_webhook(request):
+            try:
+                data = await request.json()
+                logger.info(f"📩 Получен webhook: {data.get('update_id', 'unknown')}")
+                from aiogram.types import Update
+                update = Update(**data)
+                await dp.feed_update(bot, update)
+                return web.Response(text="OK")
+            except Exception as e:
+                logger.error(f"❌ Webhook error: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return web.Response(text="Error", status=500)
+
+        # Обработчик для callback от Worker (у вас уже есть)
         app.router.add_post("/callback", handle_callback)
-        app.router.add_post(config.WEBHOOK_PATH, lambda r: web.Response(text="OK"))  # если webhook нужен
+        # Обработчик для Telegram
+        app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
 
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
 
-        port = int(os.getenv("PORT", 8000))
+        port = int(os.getenv("PORT", 8080))
         web.run_app(app, host="0.0.0.0", port=port)
     else:
         # Для локального тестирования с polling
