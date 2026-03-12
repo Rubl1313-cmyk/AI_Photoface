@@ -150,15 +150,15 @@ async def generate_with_flux_klein(
     """
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
-    # Подготавливаем данные для multipart/form-data
+    # Подготавливаем данные для JSON
     data = {
         "prompt": prompt.strip(),
         "model": CF_MODELS["flux_klein"],
-        "width": str(min(1024, width)),
-        "height": str(min(1024, height)),
-        "num_steps": str(min(50, max(20, int(steps)))),
-        "guidance_scale": str(guidance),
-        "num_outputs": "1"
+        "width": min(1024, width),           # Без str()
+        "height": min(1024, height),         # Без str()
+        "num_steps": min(50, max(20, int(steps))),  # Без str()
+        "guidance_scale": guidance,          # Без str()
+        "num_outputs": 1
     }
     
     # Улучшенный негативный промпт для фотореализма
@@ -182,30 +182,11 @@ async def generate_with_flux_klein(
     model_type = "с референсом" if reference_image else "без референса"
     logger.info(f"🎯 FLUX.2-klein ({model_type}): {prompt[:50]}...")
     
-    # Конвертируем строковые значения в числа для числовых полей
-    json_data = {
-        "prompt": data["prompt"],
-        "model": data["model"],
-        "width": int(data["width"]),           # ✅ Число, не строка
-        "height": int(data["height"]),         # ✅ Число, не строка
-        "num_steps": int(data["num_steps"]),   # ✅ Число, не строка
-        "guidance_scale": float(data["guidance_scale"]),  # ✅ Float
-        "num_outputs": int(data["num_outputs"])
-    }
-    
-    # Добавляем опциональные поля
-    if "negative_prompt" in data:
-        json_data["negative_prompt"] = data["negative_prompt"]
-    if "image_b64" in data:
-        json_data["image_b64"] = data["image_b64"]
-    if "mask_b64" in data:
-        json_data["mask_b64"] = data["mask_b64"]
-    
     async with httpx.AsyncClient(timeout=300) as client:
         try:
             resp = await client.post(
                 url,
-                json=json_data,  # ✅ httpx сам поставит Content-Type: application/json
+                json=data,  # Отправляем как JSON
                 headers={"Content-Type": "application/json"}
             )
             resp.raise_for_status()
