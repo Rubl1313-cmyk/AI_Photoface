@@ -630,6 +630,7 @@ if __name__ == "__main__":
                 return web.Response(text="Error", status=500)
 
         # Обработчик для callback от Worker (у вас уже есть)
+        app = web.Application(client_max_size=1024 * 1024 * 10) 
         app.router.add_post("/callback", handle_callback)
         # Обработчик для Telegram
         app.router.add_post(config.WEBHOOK_PATH, handle_webhook)
