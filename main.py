@@ -477,7 +477,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             width=format_info["width"],
             height=format_info["height"],
             negative_prompt=negative_prompt,
-            strength=0.7
+            strength=0.45
         )
 
         if job_id:
@@ -527,7 +527,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             callback_url=CALLBACK_URL,
             width=1024,
             height=576,
-            strength=0.85,
+            strength=0.7,
             negative_prompt=""  # для стилей не передаём негативный промпт
         )
 
