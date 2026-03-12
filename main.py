@@ -384,7 +384,6 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
 
         format_info = PHOTOSHOOT_FORMATS[format_key]
         final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
-        # Негативный промпт не передаём, FLUX сам справится
 
         logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
 
@@ -445,7 +444,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
             prompt=final_prompt,
             reference_image=face_photo,
             width=1024,
-            height=576,   # 16:9
+            height=576,
             guidance=7.5
         )
 
@@ -521,7 +520,6 @@ if __name__ == "__main__":
     if use_webhook:
         # Автоматическая установка вебхука при старте
         async def on_startup(app):
-            # Берём URL из переменных окружения
             public_url = os.getenv("PUBLIC_URL", "").rstrip('/')
             webhook_path = config.WEBHOOK_PATH
             if public_url:
