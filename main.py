@@ -10,7 +10,7 @@ import sys
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, ReplyKeyboardRemove
+from aiogram.types import BufferedInputFile, ReplyKeyboardRemove, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import config
