@@ -116,13 +116,31 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "ai_image")
 async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserStates.waiting_for_ai_image_prompt)
-    await callback.message.edit_text(
-        "🎨 **AIMage - Генерация по промпту**\n\n"
-        "🎯 Создаю изображения по твоему описанию\n"
-        "💡 *Использую FLUX.1-schnell для быстрой генерации!*\n\n"
-        "👇 *Напиши промпт для генерации*",
-        parse_mode="Markdown"
-    )
+    
+    # Проверяем есть ли текст в сообщении, если нет - отправляем новое
+    try:
+        await callback.message.edit_text(
+            "🎨 **AIMage - Генерация по промпту**\n\n"
+            "🎯 Создаю изображения по твоему описанию\n"
+            "💡 *Использую FLUX.1-schnell для быстрой генерации!*\n\n"
+            "👇 *Напиши что создать или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="ai_image_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
+    except:
+        # Если не можем отредактировать, отправляем новое сообщение
+        await callback.message.answer(
+            "🎨 **AIMage - Генерация по промпту**\n\n"
+            "🎯 Создаю изображения по твоему описанию\n"
+            "💡 *Использую FLUX.1-schnell для быстрой генерации!*\n\n"
+            "👇 *Напиши что создать или нажми кнопку ниже*",
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text="✅ Готово", callback_data="ai_image_ready")
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
 
 @dp.message(F.photo)
 async def handle_photo_upload(message: types.Message, state: FSMContext):
@@ -459,9 +477,13 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
             await state.set_state(UserStates.idle)
             return
         
+        # Промпт по умолчанию если пустой
+        if not prompt.strip():
+            prompt = "beautiful digital art, high quality, detailed, vibrant colors, professional illustration"
+        
         logger.info(f"🎨 AIMage: {prompt[:50]}...")
         
-        # Генерируем с FLUX.1-schnell
+        # Генерируем с FLUX.1-schnell (без референса!)
         result_image = await generate_with_flux_schnell(
             prompt=prompt,
             width=1024,

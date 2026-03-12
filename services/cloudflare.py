@@ -42,7 +42,6 @@ def enhance_image_quality(image_bytes: bytes, mode: str = "auto") -> bytes:
             img = enhancer.enhance(1.05)
             
             # Баланс белого - слегка теплее
-            from PIL import ImageEnhance
             enhancer = ImageEnhance.Brightness(img)
             img = enhancer.enhance(1.02)
             
@@ -151,8 +150,13 @@ async def generate_with_flux_klein(
     url = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
     
     # Подготавливаем данные для JSON
+    # Добавляем промпт для сохранения лица
+    face_preservation_prompt = "perfect face match, exact same person, identical facial features, same eyes, same nose, same mouth, same face shape, preserve identity, high fidelity face reconstruction, detailed face, sharp facial features, photorealistic face, accurate likeness"
+    
+    combined_prompt = f"{face_preservation_prompt}, {prompt.strip()}"
+    
     data = {
-        "prompt": prompt.strip(),
+        "prompt": combined_prompt,
         "model": CF_MODELS["flux_klein"],
         "width": min(1024, width),           # Без str()
         "height": min(1024, height),         # Без str()
@@ -161,8 +165,8 @@ async def generate_with_flux_klein(
         "num_outputs": 1
     }
     
-    # Улучшенный негативный промпт для фотореализма
-    enhanced_negative = "cartoon, anime, painting, drawing, illustration, 3d, render, blurry, low quality, distorted face, artificial, plastic, wax figure, uncanny valley, oversaturated, unnatural colors, artifacts, noise, compression artifacts, watermark, signature, text, multiple faces, extra limbs, deformed hands, bad anatomy"
+    # Улучшенный негативный промпт для фотореализма с защитой лица
+    enhanced_negative = "cartoon, anime, painting, drawing, illustration, 3d, render, blurry, low quality, distorted face, artificial, plastic, wax figure, uncanny valley, oversaturated, unnatural colors, artifacts, noise, compression artifacts, watermark, signature, text, multiple faces, extra limbs, deformed hands, bad anatomy, different person, face swap, wrong face, changed identity, face distortion, facial deformation"
     full_negative = f"{enhanced_negative}, {negative_prompt}" if negative_prompt else enhanced_negative
     
     if full_negative:
@@ -173,6 +177,9 @@ async def generate_with_flux_klein(
         compressed_ref = compress_image(reference_image)
         ref_b64 = base64.b64encode(compressed_ref).decode()
         data["image_b64"] = ref_b64
+        logger.info(f"📎 Reference image added: {len(ref_b64)} chars")
+        
+        # FLUX.2-klein может не поддерживать маски - используем только референс
         
     
     model_type = "с референсом" if reference_image else "без референса"
