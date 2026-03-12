@@ -17,26 +17,18 @@ MODEL_FLUX_SCHNELL = "@cf/black-forest-labs/flux-1-schnell"           # для A
 
 # ================== ПОДГОТОВКА ИЗОБРАЖЕНИЯ ==================
 
-def prepare_reference_image(image_bytes: bytes, target_size: int = 512) -> bytes:
-    """
-    Подготавливает референсное изображение для отправки в очередь:
-    - Масштабирует с сохранением пропорций, чтобы большая сторона стала target_size
-    - Добавляет чёрные полосы (padding) до квадрата target_size x target_size
-    - Сжимает JPEG с качеством 85
-    """
+def prepare_reference_image(image_bytes: bytes, target_size: int = 1024) -> bytes:
+    """Обрезает до квадрата по центру (без чёрных полей)"""
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        ratio = target_size / max(img.size)
-        new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-        new_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
-        left = (target_size - new_size[0]) // 2
-        top = (target_size - new_size[1]) // 2
-        new_img.paste(img, (left, top))
-
+        # Обрезка до квадрата по центру
+        min_side = min(img.size)
+        left = (img.width - min_side) // 2
+        top = (img.height - min_side) // 2
+        img = img.crop((left, top, left + min_side, top + min_side))
+        img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
         output = io.BytesIO()
-        new_img.save(output, format="JPEG", quality=85, optimize=True)
+        img.save(output, format="JPEG", quality=95, optimize=True)
         return output.getvalue()
     except Exception as e:
         logger.error(f"❌ Image preparation error: {e}")
