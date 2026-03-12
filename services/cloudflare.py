@@ -168,9 +168,6 @@ async def generate_with_flux_klein(
     if full_negative:
         data["negative_prompt"] = full_negative.strip()
     
-    # Файлы для multipart
-    files = {}
-    
     # Добавляем референсное изображение если есть
     if reference_image:
         compressed_ref = compress_image(reference_image)
@@ -185,12 +182,31 @@ async def generate_with_flux_klein(
     model_type = "с референсом" if reference_image else "без референса"
     logger.info(f"🎯 FLUX.2-klein ({model_type}): {prompt[:50]}...")
     
+    # Конвертируем строковые значения в числа для числовых полей
+    json_data = {
+        "prompt": data["prompt"],
+        "model": data["model"],
+        "width": int(data["width"]),           # ✅ Число, не строка
+        "height": int(data["height"]),         # ✅ Число, не строка
+        "num_steps": int(data["num_steps"]),   # ✅ Число, не строка
+        "guidance_scale": float(data["guidance_scale"]),  # ✅ Float
+        "num_outputs": int(data["num_outputs"])
+    }
+    
+    # Добавляем опциональные поля
+    if "negative_prompt" in data:
+        json_data["negative_prompt"] = data["negative_prompt"]
+    if "image_b64" in data:
+        json_data["image_b64"] = data["image_b64"]
+    if "mask_b64" in data:
+        json_data["mask_b64"] = data["mask_b64"]
+    
     async with httpx.AsyncClient(timeout=300) as client:
         try:
             resp = await client.post(
                 url,
-                data=data,  # Отправляем как form-data, не файлы
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                json=json_data,  # ✅ httpx сам поставит Content-Type: application/json
+                headers={"Content-Type": "application/json"}
             )
             resp.raise_for_status()
             
