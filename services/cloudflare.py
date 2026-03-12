@@ -1,24 +1,23 @@
-# services/cloudflare.py
-import base64
+import aiohttp
 import logging
 import os
 import io
 from typing import Optional
 from PIL import Image
-import aiohttp
 
 logger = logging.getLogger(__name__)
 
 CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://ai-image-generator.rubl1313.workers.dev").strip()
 
-# Константы моделей
-MODEL_SD_V1_5_IMG2IMG = "@cf/runwayml/stable-diffusion-v1-5-img2img"  # для img2img (режимы 1 и 2)
-MODEL_FLUX_SCHNELL = "@cf/black-forest-labs/flux-1-schnell"           # для AIMage
+# ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 
-# ================== ПОДГОТОВКА ИЗОБРАЖЕНИЯ ==================
-
-def prepare_reference_image(image_bytes: bytes, target_size: int = 1024) -> bytes:
-    """Обрезает до квадрата по центру (без чёрных полей)"""
+def prepare_reference_image(image_bytes: bytes, target_size: int = 512) -> bytes:
+    """
+    Подготавливает референсное изображение для FLUX.2:
+    - Обрезает до квадрата по центру (crop)
+    - Масштабирует до target_size (макс. 512)
+    - Возвращает JPEG с высоким качеством
+    """
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         # Обрезка до квадрата по центру
@@ -34,143 +33,72 @@ def prepare_reference_image(image_bytes: bytes, target_size: int = 1024) -> byte
         logger.error(f"❌ Image preparation error: {e}")
         return image_bytes
 
-# ================== УНИВЕРСАЛЬНАЯ ОТПРАВКА ЗАДАЧИ ==================
+# ================== ГЕНЕРАЦИЯ С FLUX.2 (с референсом) ==================
 
-async def send_task(
+async def generate_flux_klein(
     prompt: str,
-    callback_url: str,
     reference_image: Optional[bytes] = None,
-    model: Optional[str] = None,
-    width: int = 512,
-    height: int = 512,
-    steps: int = 20,
-    guidance: float = 7.5,
-    strength: float = 0.7,
-    negative_prompt: str = ""
-) -> Optional[str]:
-    """
-    Отправляет задачу в Cloudflare Worker и возвращает jobId.
-    """
-    ref_b64 = None
-    if reference_image:
-        prepared = prepare_reference_image(reference_image, target_size=512)
-        ref_b64 = base64.b64encode(prepared).decode()
-        logger.info(f"📦 Размер base64 изображения: {len(ref_b64)} байт")
-
-    payload = {
-        "prompt": prompt,
-        "reference_image_b64": ref_b64,   # только один формат – base64
-        "callback_url": callback_url,
-        "width": width,
-        "height": height,
-        "steps": steps,
-        "guidance": guidance,
-        "strength": strength,
-        "negative_prompt": negative_prompt
-    }
-    if model:
-        payload["model"] = model  # для AIMage передаём FLUX
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(CF_WORKER_URL, json=payload) as resp:
-                if resp.status == 202:
-                    data = await resp.json()
-                    job_id = data.get("jobId")
-                    if job_id:
-                        logger.info(f"✅ Task queued with jobId: {job_id}")
-                        return job_id
-                    else:
-                        logger.error(f"❌ No jobId in response: {data}")
-                        return None
-                else:
-                    error_text = await resp.text()
-                    logger.error(f"❌ Worker error {resp.status}: {error_text}")
-                    return None
-    except Exception as e:
-        logger.error(f"❌ Exception sending task: {e}")
-        return None
-
-# ================== СПЕЦИАЛИЗИРОВАННЫЕ ФУНКЦИИ ДЛЯ РЕЖИМОВ ==================
-
-async def generate_photoshoot(
-    prompt: str,
-    reference_image: bytes,
-    callback_url: str,
-    width: int = 768,          # для вертикального формата 4:3
+    width: int = 1024,
     height: int = 1024,
-    steps: int = 20,
-    guidance: float = 7.5,
-    strength: float = 0.7,
-    negative_prompt: str = ""
-) -> Optional[str]:
+    guidance: float = 7.5
+) -> Optional[bytes]:
     """
-    Режим AI Photoshoot (фотореализм).
-    Использует stable-diffusion-v1-5-img2img.
-    Параметры width/height должны соответствовать выбранному формату (из main.py).
+    Генерация с FLUX.2-klein для AI Photoshoot и AI Styles.
+    Возвращает бинарное изображение или None при ошибке.
     """
-    return await send_task(
-        prompt=prompt,
-        reference_image=reference_image,
-        callback_url=callback_url,
-        model=MODEL_SD_V1_5_IMG2IMG,
-        width=width,
-        height=height,
-        steps=steps,
-        guidance=guidance,
-        strength=strength,
-        negative_prompt=negative_prompt
-    )
+    # Подготавливаем изображение, если есть
+    image_data = None
+    if reference_image:
+        image_data = prepare_reference_image(reference_image, target_size=512)
 
-async def generate_style(
-    prompt: str,
-    reference_image: bytes,
-    callback_url: str,
-    width: int = 1024,          # для AI Styles обычно 16:9
-    height: int = 576,
-    steps: int = 20,
-    guidance: float = 7.5,
-    strength: float = 0.85,     # чуть выше для стилизации
-    negative_prompt: str = ""    # для стилей обычно пустой
-) -> Optional[str]:
-    """
-    Режим AI Styles (различные стили).
-    Использует ту же модель, но с другими настройками по умолчанию.
-    """
-    return await send_task(
-        prompt=prompt,
-        reference_image=reference_image,
-        callback_url=callback_url,
-        model=MODEL_SD_V1_5_IMG2IMG,
-        width=width,
-        height=height,
-        steps=steps,
-        guidance=guidance,
-        strength=strength,
-        negative_prompt=negative_prompt
-    )
+    # Создаём multipart-данные
+    data = aiohttp.FormData()
+    data.add_field('prompt', prompt)
+    data.add_field('width', str(width))
+    data.add_field('height', str(height))
+    data.add_field('guidance', str(guidance))
 
-async def generate_ai_image(
+    if image_data:
+        data.add_field('input_image_0',
+                       image_data,
+                       filename='reference.jpg',
+                       content_type='image/jpeg')
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(CF_WORKER_URL, data=data) as resp:
+            if resp.status == 200:
+                return await resp.read()
+            else:
+                error_text = await resp.text()
+                logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
+                return None
+
+# ================== ГЕНЕРАЦИЯ С FLUX.1 (без референса) ==================
+
+async def generate_flux_schnell(
     prompt: str,
-    callback_url: str,
     width: int = 1024,
     height: int = 1024,
     steps: int = 4,
     guidance: float = 3.5
-) -> Optional[str]:
+) -> Optional[bytes]:
     """
-    Режим AIMage (генерация без референса).
-    Использует FLUX.1-schnell.
+    Генерация с FLUX.1-schnell для AIMage.
+    Возвращает бинарное изображение или None при ошибке.
     """
-    return await send_task(
-        prompt=prompt,
-        reference_image=None,
-        callback_url=callback_url,
-        model=MODEL_FLUX_SCHNELL,
-        width=width,
-        height=height,
-        steps=steps,
-        guidance=guidance,
-        strength=1.0,        # не используется FLUX, но оставим
-        negative_prompt=""
-    )
+    payload = {
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "steps": steps,
+        "guidance": guidance
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(CF_WORKER_URL, json=payload) as resp:
+            if resp.status == 200:
+                return await resp.read()
+            else:
+                error_text = await resp.text()
+                logger.error(f"❌ FLUX.1 error {resp.status}: {error_text}")
+                return None
