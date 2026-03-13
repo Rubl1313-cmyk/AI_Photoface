@@ -256,15 +256,18 @@ PHOTOSHOOT_FORMATS = {
     }
 }
 
-def build_photoshoot_prompt(style_key: str, pose_key: str = None, user_prompt: str = "") -> str:
-    """Собирает полный промпт для AI Photoshoot"""
+def build_photoshoot_prompt(style_key: str, pose_key: str = None, gaze_key: str = None, user_prompt: str = "") -> str:
+    """Собирает полный промпт для AI Photoshoot с учётом позы и взгляда"""
     style = PHOTOSHOOT_REALISM.get(style_key, PHOTOSHOOT_REALISM["portrait"])
     base_prompt = style["base_prompt"]
     
-    # Добавляем позу если указана
-    if pose_key and pose_key in POSES and pose_key != "custom":
-        pose_addition = POSES[pose_key]["prompt_addition"]
-        base_prompt = f"{base_prompt}, {pose_addition}"
+    # Добавляем позу
+    if pose_key and pose_key in POSES:
+        base_prompt = f"{base_prompt}, {POSES[pose_key]['prompt_addition']}"
+    
+    # Добавляем взгляд
+    if gaze_key and gaze_key in GAZE:
+        base_prompt = f"{base_prompt}, {GAZE[gaze_key]['prompt_addition']}"
     
     # Добавляем пользовательский промпт
     if user_prompt:
