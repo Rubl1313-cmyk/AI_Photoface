@@ -43,23 +43,19 @@ from prompts import (
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(exist_ok=True)
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация бота
 BOT_TOKEN = config.BOT_TOKEN
 if not BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN не установлен! Добавьте его в переменные окружения.")
+    logger.error("❌ BOT_TOKEN не установлен!")
     exit(1)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-
-# Инициализация трекера использования
 usage = UsageTracker()
 
 # ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
@@ -116,13 +112,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-# ================== НАЧАЛО СБОРА ФОТО ==================
+# ================== НАЧАЛО СБОРА ФОТО (НОВЫЕ СООБЩЕНИЯ) ==================
 
 @dp.callback_query(F.data == "ai_photoshoot")
 async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    logger.info(f"📩 Callback: {callback.data}")
     await state.set_state(UserStates.waiting_for_photoshoot_face)
     await state.update_data(photoshoot_faces=[])
-    await callback.message.edit_text(
+    await callback.message.answer(
         "📸 **AI Photoshoot - Фотореализм**\n\n"
         "🎯 Создаю профессиональные фотографии с твоим лицом\n"
         "💡 *Можно отправить до 4 фото для лучшего результата!*\n"
@@ -137,9 +135,11 @@ async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext)
 
 @dp.callback_query(F.data == "ai_styles")
 async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    logger.info(f"📩 Callback: {callback.data}")
     await state.set_state(UserStates.waiting_for_ai_styles_face)
     await state.update_data(ai_styles_faces=[])
-    await callback.message.edit_text(
+    await callback.message.answer(
         "🎨 **AI Styles - Популярные стили 2026**\n\n"
         "🎯 Создаю изображения с твоим лицом в разных стилях\n"
         "💡 *Можно отправить до 4 фото для лучшего результата!*\n"
@@ -150,6 +150,22 @@ async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "📤 Отправляй фото (до 4). Когда закончишь, нажми кнопку внизу.",
         reply_markup=get_ready_reply_keyboard()
+    )
+
+@dp.callback_query(F.data == "ai_image")
+async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    logger.info(f"📩 Callback: {callback.data}")
+    await state.set_state(UserStates.waiting_for_ai_image_prompt)
+    await callback.message.answer(
+        "🎨 **AIMage - Генерация по промпту**\n\n"
+        "🎯 Создаю изображения по твоему описанию\n"
+        "💡 *Использую FLUX.1-schnell для быстрой генерации!*\n\n"
+        "👇 *Напиши что создать или нажми кнопку ниже*",
+        reply_markup=InlineKeyboardBuilder().row(
+            InlineKeyboardButton(text="✅ Готово", callback_data="ai_image_ready")
+        ).as_markup(),
+        parse_mode="Markdown"
     )
 
 # ================== ОБРАБОТКА ЗАГРУЖЕННЫХ ФОТО ==================
@@ -217,69 +233,86 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
 
 # ================== ВЫБОР СТИЛЯ И ФОРМАТА ==================
 
-@dp.callback_query(F.data == "ai_photoshoot")
-async def handle_ai_photoshoot(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()  # обязательно, чтобы убрать "часики" на кнопке
-    await state.set_state(UserStates.waiting_for_photoshoot_face)
-    await state.update_data(photoshoot_faces=[])
+@dp.callback_query(F.data.startswith("photoshoot_style_"))
+async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    logger.info(f"📩 Callback photoshoot_style: {callback.data}")
+    style_key = callback.data.split("_")[2]
+    if style_key not in PHOTOSHOOT_REALISM:
+        await callback.answer("❌ Стиль не найден", show_alert=True)
+        return
+    style = PHOTOSHOOT_REALISM[style_key]
+    await state.update_data(photoshoot_style=style_key)
+    await state.set_state(UserStates.selecting_photoshoot_format)
+    examples_text = "\n".join([f"• {ex}" for ex in style["examples"]])
+    await callback.message.edit_text(
+        f"📸 **{style['name']}**\n\n"
+        f"📝 {style['description']}\n\n"
+        f"💡 **Примеры локаций:**\n{examples_text}\n\n"
+        f"📐 **Теперь выбери формат:**",
+        reply_markup=get_photoshoot_formats_keyboard(),
+        parse_mode="Markdown"
+    )
 
-    # Отправляем новое сообщение с инструкцией (не редактируем старое)
-    await callback.message.answer(
-        "📸 **AI Photoshoot - Фотореализм**\n\n"
-        "🎯 Создаю профессиональные фотографии с твоим лицом\n"
-        "💡 *Можно отправить до 4 фото для лучшего результата!*\n"
-        "📸 *Отправляй фото по одному*\n\n"
-        "👇 **После отправки всех фото нажми кнопку внизу**",
+@dp.callback_query(F.data.startswith("photoshoot_format_"))
+async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    logger.info(f"📩 Callback photoshoot_format: {callback.data}")
+    format_key = "_".join(callback.data.split("_")[2:])
+    if format_key not in PHOTOSHOOT_FORMATS:
+        await callback.answer("❌ Формат не найден", show_alert=True)
+        return
+    format_info = PHOTOSHOOT_FORMATS[format_key]
+    await state.update_data(photoshoot_format=format_key)
+    await state.set_state(UserStates.waiting_for_photoshoot_prompt)
+
+    await callback.message.edit_text(
+        f"📐 **{format_info['name']}**\n\n"
+        f"📝 {format_info['description']}\n\n"
+        f"✍️ **Добавь детали для генерации:**\n"
+        f"• Где находится?\n"
+        f"• Во что одет?\n"
+        f"• Какое настроение?\n\n"
+        f"👇 Напиши детали или нажми кнопку внизу",
         parse_mode="Markdown"
     )
     await callback.message.answer(
-        "📤 Отправляй фото (до 4). Когда закончишь, нажми кнопку внизу.",
+        "📝 Введи детали или нажми «✅ Готово», чтобы использовать базовый стиль.",
         reply_markup=get_ready_reply_keyboard()
     )
 
-@dp.callback_query(F.data == "ai_styles")
-async def handle_ai_styles(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data.startswith("ai_style_"))
+async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    await state.set_state(UserStates.waiting_for_ai_styles_face)
-    await state.update_data(ai_styles_faces=[])
+    logger.info(f"📩 Callback ai_style: {callback.data}")
+    style_key = callback.data.split("_")[2]
+    if style_key not in AI_STYLES:
+        await callback.answer("❌ Стиль не найден", show_alert=True)
+        return
+    style = AI_STYLES[style_key]
+    await state.update_data(ai_styles_style=style_key)
+    await state.set_state(UserStates.waiting_for_ai_styles_prompt)
 
-    await callback.message.answer(
-        "🎨 **AI Styles - Популярные стили 2026**\n\n"
-        "🎯 Создаю изображения с твоим лицом в разных стилях\n"
-        "💡 *Можно отправить до 4 фото для лучшего результата!*\n"
-        "📸 *Отправляй фото по одному*\n\n"
-        "👇 **После отправки всех фото нажми кнопку внизу**",
+    await callback.message.edit_text(
+        f"🎨 **{style['name']}**\n\n"
+        f"📝 {style['description']}\n\n"
+        f"✍️ **Добавь детали для генерации:**\n"
+        f"• Что еще добавить?\n"
+        f"• Какое настроение?\n\n"
+        f"👇 Напиши детали или нажми кнопку внизу",
         parse_mode="Markdown"
     )
     await callback.message.answer(
-        "📤 Отправляй фото (до 4). Когда закончишь, нажми кнопку внизу.",
+        "📝 Введи детали или нажми «✅ Готово», чтобы использовать базовый стиль.",
         reply_markup=get_ready_reply_keyboard()
     )
 
-@dp.callback_query(F.data == "ai_image")
-async def handle_ai_image(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.set_state(UserStates.waiting_for_ai_image_prompt)
-    await callback.message.answer(
-        "🎨 **AIMage - Генерация по промпту**\n\n"
-        "🎯 Создаю изображения по твоему описанию\n"
-        "💡 *Использую FLUX.1-schnell для быстрой генерации!*\n\n"
-        "👇 *Напиши что создать или нажми кнопку ниже*",
-        reply_markup=InlineKeyboardBuilder().row(
-            InlineKeyboardButton(text="✅ Готово", callback_data="ai_image_ready")
-        ).as_markup(),
-        parse_mode="Markdown"
-    )
-
-# ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ ==================
-# ВНИМАНИЕ: НЕТ отдельного хендлера @dp.message(F.text == "✅ Готово")!
+# ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТА ==================
 
 @dp.message()
 async def handle_text_messages(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_text = message.text.strip()
-
-    # Логируем для отладки
     logger.info(f"📩 Текстовое сообщение: '{user_text}' в состоянии {current_state}")
 
     # ---- Этап сбора фото (AI Photoshoot) ----
@@ -329,10 +362,8 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     # ---- Этап ввода промпта (AI Photoshoot) ----
     if current_state == UserStates.waiting_for_photoshoot_prompt:
         if user_text == "✅ Готово":
-            # Кнопка без текста – генерируем с базовым промптом
             await process_photoshoot_generation(message, state, custom_prompt="")
         else:
-            # Пользователь ввёл текст – сохраняем и генерируем с ним
             await state.update_data(photoshoot_prompt=user_text)
             await process_photoshoot_generation(message, state, custom_prompt=user_text)
         return
@@ -355,7 +386,7 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
             await process_ai_image_generation(message, state, custom_prompt=user_text)
         return
 
-    # ---- Если сообщение не обработано - игнорируем (но логируем) ----
+    # ---- Если сообщение не обработано - игнорируем ----
     logger.info(f"⚠️ Сообщение не обработано: '{user_text}' в состоянии {current_state}")
 
 # ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
@@ -383,7 +414,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
                 f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
                 "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
                 parse_mode="Markdown"
-                )
+            )
             await state.set_state(UserStates.idle)
             return
 
@@ -393,7 +424,6 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
         logger.info(f"📸 Используется {len(face_photos)} референсных фото")
 
-        # Убрали guidance, так как он не поддерживается моделью FLUX.2
         image_bytes = await generate_photoshoot(
             prompt=final_prompt,
             reference_images=face_photos,
@@ -443,7 +473,7 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
                 f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
                 "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
                 parse_mode="Markdown"
-                )
+            )
             await state.set_state(UserStates.idle)
             return
 
@@ -451,7 +481,6 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
         logger.info(f"🎨 AI Styles: {style_key} - {final_prompt[:100]}...")
         logger.info(f"🎨 Используется {len(face_photos)} референсных фото")
 
-        # Убрали guidance
         image_bytes = await generate_style(
             prompt=final_prompt,
             reference_images=face_photos,
@@ -491,7 +520,7 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
                 f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
                 "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
                 parse_mode="Markdown"
-                )
+            )
             await state.set_state(UserStates.idle)
             return
 
@@ -502,7 +531,6 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
 
         logger.info(f"🎨 AIMage: {prompt[:50]}...")
 
-        # guidance оставляем, так как FLUX.1-schnell его поддерживает
         image_bytes = await generate_ai_image(
             prompt=prompt,
             width=1024,
