@@ -61,7 +61,27 @@ usage = UsageTracker()
 
 # Отправка фото с caption
 async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
-    """Отправка фото с поддержкой длинных caption"""
+    """Отправка фото с поддержкой длинных caption и конвертацией в JPEG при необходимости"""
+    try:
+        # Открываем изображение и проверяем режим
+        img = Image.open(io.BytesIO(photo.data))
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Создаём белый фон
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[3])
+            else:
+                background.paste(img)
+            img = background
+        # Сохраняем в JPEG
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=95)
+        photo = BufferedInputFile(output.getvalue(), filename="image.jpg")
+    except Exception as e:
+        logger.error(f"Ошибка обработки изображения перед отправкой: {e}")
+        # Если не удалось обработать, пробуем отправить как есть (вдруг проскочит)
+        pass
+
     try:
         await message.answer_photo(
             photo=photo,
@@ -70,7 +90,10 @@ async def send_photo(message: types.Message, photo: BufferedInputFile, caption: 
         )
     except Exception as e:
         logger.error(f"Error sending photo: {e}")
-        await message.answer("❌ Ошибка отправки фото")
+        # Сохраняем проблемный файл для анализа
+        with open(f"error_{message.from_user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin", "wb") as f:
+            f.write(photo.data)
+        raise  # пробрасываем, чтобы выше не считали генерацию успешной
 
 # ================== ОБРАБОТЧИКИ КОМАНД ==================
 
