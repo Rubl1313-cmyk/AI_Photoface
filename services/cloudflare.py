@@ -16,11 +16,11 @@ def prepare_reference_images(image_bytes_list: List[bytes], target_size: int = 5
     - Масштабируется до target_size (макс. 512, требование модели).
     - Конвертируется в RGB и сохраняется как JPEG с высоким качеством.
     - При ошибке возвращает None для этого элемента (не добавляем в запрос).
-    
+
     Args:
         image_bytes_list: Список байтов исходных изображений
         target_size: Целевой размер (должен быть ≤ 512)
-    
+
     Returns:
         Список подготовленных байтов или None для каждого
     """
@@ -29,7 +29,7 @@ def prepare_reference_images(image_bytes_list: List[bytes], target_size: int = 5
         if not image_bytes:
             prepared.append(None)
             continue
-            
+
         try:
             img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             # Обрезка до квадрата по центру
@@ -56,14 +56,14 @@ async def generate_flux_klein(
 ) -> Optional[bytes]:
     """
     Генерация с FLUX.2-klein (поддержка до 4 референсов).
-    
+
     Args:
         prompt: Текстовое описание
         reference_images: Список байтов референсных изображений (максимум 4)
         width: Ширина выходного изображения
         height: Высота выходного изображения
         guidance: Guidance scale (по умолч. 7.5)
-    
+
     Returns:
         Бинарные данные изображения (PNG) или None при ошибке
     """
@@ -113,32 +113,36 @@ async def generate_flux_klein(
                 logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
                 return None
 
-# Удобные обёртки для конкретных режимов (могут быть расширены для нескольких референсов)
+# ===== Удобные обёртки, принимающие список референсов (до 4) =====
+
 async def generate_photoshoot(
     prompt: str,
-    reference_image: bytes,
+    reference_images: List[bytes],
     width: int = 768,
     height: int = 1024,
     guidance: float = 7.5
 ) -> Optional[bytes]:
     """
-    Режим AI Photoshoot (принимает один референс, но внутренняя функция поддерживает до 4).
+    Режим AI Photoshoot (поддержка до 4 референсов).
+    Принимает список байтов референсных изображений.
     """
-    return await generate_flux_klein(prompt, [reference_image], width, height, guidance)
+    return await generate_flux_klein(prompt, reference_images, width, height, guidance)
 
 async def generate_style(
     prompt: str,
-    reference_image: bytes,
+    reference_images: List[bytes],
     width: int = 1024,
     height: int = 576,
     guidance: float = 7.5
 ) -> Optional[bytes]:
     """
-    Режим AI Styles (принимает один референс, но внутренняя функция поддерживает до 4).
+    Режим AI Styles (поддержка до 4 референсов).
+    Принимает список байтов референсных изображений.
     """
-    return await generate_flux_klein(prompt, [reference_image], width, height, guidance)
+    return await generate_flux_klein(prompt, reference_images, width, height, guidance)
 
-# FLUX.1-schnell (без референса)
+# ===== FLUX.1-schnell (без референса) =====
+
 async def generate_flux_schnell(
     prompt: str,
     width: int = 1024,
