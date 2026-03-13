@@ -252,7 +252,7 @@ def build_photoshoot_prompt(style_key: str, pose_key: str = None, user_prompt: s
         base_prompt = f"{base_prompt}, {user_prompt}"
     
     # Финальные улучшения для фотореализма
-    base_prompt = f"{base_prompt}, ultra realistic, photorealistic, professional photography, 8k resolution, detailed skin texture, natural lighting, sharp focus"
+    base_prompt = f"{base_prompt}, photorealistic, professional photography, natural lighting, save face like on reference"
     
     return base_prompt
 
