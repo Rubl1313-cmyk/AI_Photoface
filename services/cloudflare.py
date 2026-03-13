@@ -113,6 +113,7 @@ async def generate_flux_klein(
                 logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
                 return None
 
+# Удобные обёртки для конкретных режимов (могут быть расширены для нескольких референсов)
 async def generate_photoshoot(
     prompt: str,
     reference_image: bytes,
@@ -121,7 +122,7 @@ async def generate_photoshoot(
     guidance: float = 7.5
 ) -> Optional[bytes]:
     """
-    Режим AI Photoshoot (один референс).
+    Режим AI Photoshoot (принимает один референс, но внутренняя функция поддерживает до 4).
     """
     return await generate_flux_klein(prompt, [reference_image], width, height, guidance)
 
@@ -133,7 +134,7 @@ async def generate_style(
     guidance: float = 7.5
 ) -> Optional[bytes]:
     """
-    Режим AI Styles (один референс).
+    Режим AI Styles (принимает один референс, но внутренняя функция поддерживает до 4).
     """
     return await generate_flux_klein(prompt, [reference_image], width, height, guidance)
 
