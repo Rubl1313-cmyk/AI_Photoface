@@ -378,7 +378,12 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
 
         user_id = message.from_user.id
         if not usage.can_generate(user_id):
-            await message.answer(f"❌ Лимит исчерпан ({usage.get_usage(user_id)}/{usage.daily_limit})")
+            await message.answer(
+                "🌟 **Лимит на сегодня исчерпан** 🌟\n\n"
+                f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
+                "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
+                parse_mode="Markdown"
+                )
             await state.set_state(UserStates.idle)
             return
 
@@ -433,7 +438,12 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
 
         user_id = message.from_user.id
         if not usage.can_generate(user_id):
-            await message.answer(f"❌ Лимит исчерпан ({usage.get_usage(user_id)}/{usage.daily_limit})")
+            await message.answer(
+                "🌟 **Лимит на сегодня исчерпан** 🌟\n\n"
+                f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
+                "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
+                parse_mode="Markdown"
+                )
             await state.set_state(UserStates.idle)
             return
 
@@ -476,7 +486,12 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
     try:
         user_id = message.from_user.id
         if not usage.can_generate(user_id):
-            await message.answer(f"❌ Лимит исчерпан ({usage.get_usage(user_id)}/{usage.daily_limit})")
+            await message.answer(
+                "🌟 **Лимит на сегодня исчерпан** 🌟\n\n"
+                f"Вы использовали все {usage.daily_limit} доступных генераций на сегодня. "
+                "Попробуйте снова завтра! А пока можете насладиться уже созданными шедеврами ✨",
+                parse_mode="Markdown"
+                )
             await state.set_state(UserStates.idle)
             return
 
