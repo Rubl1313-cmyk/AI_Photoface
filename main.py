@@ -39,30 +39,64 @@ from prompts import (
     build_ai_styles_prompt
 )
 
-# Константы и настройки (без изменений)
+# Константы
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(exist_ok=True)
 
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+# Инициализация бота
 BOT_TOKEN = config.BOT_TOKEN
 if not BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN не установлен!")
+    logger.error("❌ BOT_TOKEN не установлен! Добавьте его в переменные окружения.")
     exit(1)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Инициализация трекера использования
 usage = UsageTracker()
 
 # ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 
 async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
-    # ... (без изменений, как в предыдущих версиях)
-    pass
+    """Отправка фото с конвертацией в RGB JPEG для совместимости с Telegram"""
+    try:
+        img = Image.open(io.BytesIO(photo.data))
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[3])
+            else:
+                background.paste(img)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        output = io.BytesIO()
+        img.save(output, format='JPEG', quality=95, optimize=True)
+        photo = BufferedInputFile(output.getvalue(), filename="image.jpg")
+        logger.info(f"✅ Изображение сконвертировано в RGB JPEG, размер: {len(output.getvalue())} байт")
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки изображения перед отправкой: {e}")
+
+    try:
+        await message.answer_photo(
+            photo=photo,
+            caption=caption[:1024],
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"❌ Error sending photo: {e}")
+        filename = f"error_{message.from_user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"
+        with open(filename, "wb") as f:
+            f.write(photo.data)
+        logger.info(f"💾 Проблемный файл сохранён как {filename}")
+        raise
 
 # ================== ОБРАБОТЧИКИ КОМАНД ==================
 
@@ -125,6 +159,7 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_id = message.from_user.id
 
+    # AI Photoshoot - сбор фото
     if current_state == UserStates.waiting_for_photoshoot_face:
         data = await state.get_data()
         faces = data.get("photoshoot_faces", [])
@@ -153,8 +188,8 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 reply_markup=get_ready_reply_keyboard()
             )
 
+    # AI Styles - сбор фото
     elif current_state == UserStates.waiting_for_ai_styles_face:
-        # аналогично
         data = await state.get_data()
         faces = data.get("ai_styles_faces", [])
         if len(faces) >= 4:
@@ -181,49 +216,6 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 f"✅ Фото {len(faces)}/4 получено. Можешь отправить ещё или нажать «✅ Готово».",
                 reply_markup=get_ready_reply_keyboard()
             )
-
-# ================== ОБРАБОТКА КНОПКИ "ГОТОВО" (ТОЛЬКО ДЛЯ СБОРА ФОТО) ==================
-
-@dp.message(F.text == "✅ Готово")
-async def handle_ready_button_collection(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    # Если состояние не соответствует сбору фото – игнорируем (пусть обрабатывается в текстовом хендлере)
-    if current_state not in [UserStates.waiting_for_photoshoot_face, UserStates.waiting_for_ai_styles_face]:
-        return
-
-    if current_state == UserStates.waiting_for_photoshoot_face:
-        data = await state.get_data()
-        faces = data.get("photoshoot_faces", [])
-        if not faces:
-            await message.answer("❌ Ты не отправил ни одного фото. Отправь хотя бы одно.")
-            return
-        await message.answer(
-            f"✅ Завершён сбор фото (получено {len(faces)}). Переходим к выбору стиля.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(UserStates.selecting_photoshoot_style)
-        await message.answer(
-            "📸 **Выбери стиль фотосессии**",
-            reply_markup=get_photoshoot_styles_keyboard(),
-            parse_mode="Markdown"
-        )
-
-    elif current_state == UserStates.waiting_for_ai_styles_face:
-        data = await state.get_data()
-        faces = data.get("ai_styles_faces", [])
-        if not faces:
-            await message.answer("❌ Ты не отправил ни одного фото. Отправь хотя бы одно.")
-            return
-        await message.answer(
-            f"✅ Завершён сбор фото (получено {len(faces)}). Переходим к выбору стиля.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(UserStates.selecting_ai_styles_style)
-        await message.answer(
-            "🎨 **Выбери стиль**",
-            reply_markup=get_ai_styles_keyboard(),
-            parse_mode="Markdown"
-        )
 
 # ================== ВЫБОР СТИЛЯ И ФОРМАТА ==================
 
@@ -295,18 +287,19 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
         reply_markup=get_ready_reply_keyboard()
     )
 
-# ================== ОБРАБОТКА ТЕКСТОВЫХ СООБЩЕНИЙ (ПРОМПТЫ) ==================
+# ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ ==================
+# ВНИМАНИЕ: НЕТ отдельного хендлера @dp.message(F.text == "✅ Готово")!
+# Вся обработка текста (включая кнопку) происходит здесь.
 
-# ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТА ==================
 @dp.message()
 async def handle_text_messages(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_text = message.text.strip()
-    
-    # Логируем для отладки (убедимся, что сообщение пришло)
+
+    # Логируем для отладки
     logger.info(f"📩 Текстовое сообщение: '{user_text}' в состоянии {current_state}")
 
-    # ---- Этап сбора фото (кнопка "✅ Готово") ----
+    # ---- Этап сбора фото (AI Photoshoot) ----
     if current_state == UserStates.waiting_for_photoshoot_face:
         if user_text == "✅ Готово":
             data = await state.get_data()
@@ -328,6 +321,7 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
             await message.answer("Отправляй фото или нажми «✅ Готово».")
         return
 
+    # ---- Этап сбора фото (AI Styles) ----
     if current_state == UserStates.waiting_for_ai_styles_face:
         if user_text == "✅ Готово":
             data = await state.get_data()
@@ -352,10 +346,10 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     # ---- Этап ввода промпта (AI Photoshoot) ----
     if current_state == UserStates.waiting_for_photoshoot_prompt:
         if user_text == "✅ Готово":
-            logger.info("✅ Нажата кнопка 'Готово' без текста – запускаем генерацию с базовым промптом")
+            # Кнопка без текста – генерируем с базовым промптом
             await process_photoshoot_generation(message, state, custom_prompt="")
         else:
-            logger.info(f"📝 Получен текст промпта: {user_text}")
+            # Пользователь ввёл текст – сохраняем и генерируем с ним
             await state.update_data(photoshoot_prompt=user_text)
             await process_photoshoot_generation(message, state, custom_prompt=user_text)
         return
@@ -363,10 +357,8 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     # ---- Этап ввода промпта (AI Styles) ----
     if current_state == UserStates.waiting_for_ai_styles_prompt:
         if user_text == "✅ Готово":
-            logger.info("✅ Нажата кнопка 'Готово' без текста – запускаем генерацию с базовым промптом")
             await process_ai_styles_generation(message, state, custom_prompt="")
         else:
-            logger.info(f"📝 Получен текст промпта: {user_text}")
             await state.update_data(ai_styles_prompt=user_text)
             await process_ai_styles_generation(message, state, custom_prompt=user_text)
         return
@@ -374,17 +366,14 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     # ---- Этап ввода промпта (AIMage) ----
     if current_state == UserStates.waiting_for_ai_image_prompt:
         if user_text == "✅ Готово":
-            logger.info("✅ Нажата кнопка 'Готово' без текста – запускаем генерацию с базовым промптом")
             await process_ai_image_generation(message, state, custom_prompt="")
         else:
-            logger.info(f"📝 Получен текст промпта: {user_text}")
             await state.update_data(ai_image_prompt=user_text)
             await process_ai_image_generation(message, state, custom_prompt=user_text)
         return
 
-    # ---- Если сообщение не обработано - игнорируем (но логируем)
+    # ---- Если сообщение не обработано - игнорируем (но логируем) ----
     logger.info(f"⚠️ Сообщение не обработано: '{user_text}' в состоянии {current_state}")
-
 
 # ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
@@ -421,7 +410,7 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             reference_images=face_photos,
             width=format_info["width"],
             height=format_info["height"],
-            guidance=7.5
+            guidance=7.5  # guidance передаётся, но в cloudflare.py мы его не добавляем в запрос для FLUX.2
         )
 
         if image_bytes:
