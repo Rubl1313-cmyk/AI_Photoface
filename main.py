@@ -39,29 +39,33 @@ from prompts import (
     build_ai_styles_prompt
 )
 
-# Константы и настройки (без изменений)
+# Константы
 DATA_DIR = Path("/app/data")
 DATA_DIR.mkdir(exist_ok=True)
 
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+# Инициализация бота
 BOT_TOKEN = config.BOT_TOKEN
 if not BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN не установлен!")
+    logger.error("❌ BOT_TOKEN не установлен! Добавьте его в переменные окружения.")
     exit(1)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Инициализация трекера использования
 usage = UsageTracker()
 
 # ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 
 async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
-    """Отправка фото с конвертацией в RGB JPEG"""
+    """Отправка фото с конвертацией в RGB JPEG для совместимости с Telegram"""
     try:
         img = Image.open(io.BytesIO(photo.data))
         if img.mode in ('RGBA', 'LA', 'P'):
@@ -155,6 +159,7 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_id = message.from_user.id
 
+    # AI Photoshoot - сбор фото
     if current_state == UserStates.waiting_for_photoshoot_face:
         data = await state.get_data()
         faces = data.get("photoshoot_faces", [])
@@ -183,6 +188,7 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 reply_markup=get_ready_reply_keyboard()
             )
 
+    # AI Styles - сбор фото
     elif current_state == UserStates.waiting_for_ai_styles_face:
         data = await state.get_data()
         faces = data.get("ai_styles_faces", [])
@@ -211,10 +217,11 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 reply_markup=get_ready_reply_keyboard()
             )
 
-# ================== ОБРАБОТКА НАЖАТИЯ "ГОТОВО" ДЛЯ СБОРА ФОТО ==================
+# ================== ОБРАБОТКА КНОПКИ "ГОТОВО" ДЛЯ СБОРА ФОТО ==================
 
 @dp.message(F.text == "✅ Готово")
-async def handle_ready_button(message: types.Message, state: FSMContext):
+async def handle_ready_button_collection(message: types.Message, state: FSMContext):
+    """Обрабатывает нажатие кнопки '✅ Готово' на этапе сбора фото"""
     current_state = await state.get_state()
     
     if current_state == UserStates.waiting_for_photoshoot_face:
@@ -253,7 +260,8 @@ async def handle_ready_button(message: types.Message, state: FSMContext):
     
     else:
         # Если нажатие "✅ Готово" произошло в другом состоянии – игнорируем
-        await message.answer("❌ Сейчас не нужно нажимать «Готово».", reply_markup=ReplyKeyboardRemove())
+        # (но можно просто пропустить)
+        pass
 
 # ================== ВЫБОР СТИЛЯ И ФОРМАТА ==================
 
@@ -286,7 +294,7 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
     await state.update_data(photoshoot_format=format_key)
     await state.set_state(UserStates.waiting_for_photoshoot_prompt)
     
-    # Отправляем сообщение с просьбой ввести детали и показываем reply-клавиатуру "✅ Готово"
+    # Отправляем сообщение с просьбой ввести детали, показываем reply-клавиатуру
     await callback.message.edit_text(
         f"📐 **{format_info['name']}**\n\n"
         f"📝 {format_info['description']}\n\n"
@@ -294,7 +302,7 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
         f"• Где находится?\n"
         f"• Во что одет?\n"
         f"• Какое настроение?\n\n"
-        f"👇 *Напиши детали или нажми кнопку внизу*",
+        f"👇 Напиши детали или нажми кнопку внизу",
         parse_mode="Markdown"
     )
     await callback.message.answer(
@@ -318,7 +326,7 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
         f"✍️ **Добавь детали для генерации:**\n"
         f"• Что еще добавить?\n"
         f"• Какое настроение?\n\n"
-        f"👇 *Напиши детали или нажми кнопку внизу*",
+        f"👇 Напиши детали или нажми кнопку внизу",
         parse_mode="Markdown"
     )
     await callback.message.answer(
@@ -333,53 +341,41 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_text = message.text.strip()
 
-    # AI Photoshoot – ввод деталей
+    # === AI Photoshoot – ввод деталей ===
     if current_state == UserStates.waiting_for_photoshoot_prompt:
-        if user_text.lower() in ['готово', 'дальше', 'continue', ''] or user_text == '✅ Готово':
-            await process_photoshoot_generation(message, state, "")
+        # Если нажата кнопка "✅ Готово" – генерируем без дополнительных деталей
+        if user_text == "✅ Готово":
+            await process_photoshoot_generation(message, state, custom_prompt="")
         else:
+            # Иначе сохраняем введённый текст как детали и сразу генерируем
             await state.update_data(photoshoot_prompt=user_text)
-            await message.answer(
-                "✅ *Детали добавлены!*\n\n"
-                "👇 *Отправь 'готово' для генерации или добавь еще деталей*",
-                reply_markup=get_ready_reply_keyboard(),
-                parse_mode="Markdown"
-            )
+            await process_photoshoot_generation(message, state, custom_prompt=user_text)
 
-    # AI Styles – ввод деталей
+    # === AI Styles – ввод деталей ===
     elif current_state == UserStates.waiting_for_ai_styles_prompt:
-        if user_text.lower() in ['готово', 'дальше', 'continue', ''] or user_text == '✅ Готово':
-            await process_ai_styles_generation(message, state, "")
+        if user_text == "✅ Готово":
+            await process_ai_styles_generation(message, state, custom_prompt="")
         else:
             await state.update_data(ai_styles_prompt=user_text)
-            await message.answer(
-                "✅ *Детали добавлены!*\n\n"
-                "👇 *Отправь 'готово' для генерации или добавь еще деталей*",
-                reply_markup=get_ready_reply_keyboard(),
-                parse_mode="Markdown"
-            )
+            await process_ai_styles_generation(message, state, custom_prompt=user_text)
 
-    # AIMage – ввод промпта
+    # === AIMage – ввод промпта ===
     elif current_state == UserStates.waiting_for_ai_image_prompt:
-        if user_text.lower() in ['готово', 'дальше', 'continue', ''] or user_text == '✅ Готово':
-            await process_ai_image_generation(message, state, "")
+        if user_text == "✅ Готово":
+            await process_ai_image_generation(message, state, custom_prompt="")
         else:
             await state.update_data(ai_image_prompt=user_text)
-            await message.answer(
-                "✅ *Детали добавлены!*\n\n"
-                "👇 *Отправь 'готово' для генерации или добавь еще детали*",
-                reply_markup=get_ready_reply_keyboard(),
-                parse_mode="Markdown"
-            )
+            await process_ai_image_generation(message, state, custom_prompt=user_text)
 
-    # В остальных состояниях игнорируем или можно предложить меню
     else:
+        # В остальных состояниях игнорируем или можно предложить меню
         await message.answer("Используй кнопки меню.", reply_markup=get_main_menu())
 
 # ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
 async def process_photoshoot_generation(message: types.Message, state: FSMContext, custom_prompt: str = ""):
     await state.set_state(UserStates.generating_photoshoot)
+    # Убираем клавиатуру перед началом генерации
     await message.answer("📸 *Генерирую изображение...*", parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
 
     try:
