@@ -302,7 +302,48 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_text = message.text.strip()
 
-    # AI Photoshoot – ввод деталей
+    # ---- Этап сбора фото (кнопка "✅ Готово") ----
+    if current_state in (UserStates.waiting_for_photoshoot_face, UserStates.waiting_for_ai_styles_face):
+        if user_text == "✅ Готово":
+            # Завершаем сбор фото
+            if current_state == UserStates.waiting_for_photoshoot_face:
+                data = await state.get_data()
+                faces = data.get("photoshoot_faces", [])
+                if not faces:
+                    await message.answer("❌ Ты не отправил ни одного фото. Отправь хотя бы одно.")
+                    return
+                await message.answer(
+                    f"✅ Завершён сбор фото (получено {len(faces)}). Переходим к выбору стиля.",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                await state.set_state(UserStates.selecting_photoshoot_style)
+                await message.answer(
+                    "📸 **Выбери стиль фотосессии**",
+                    reply_markup=get_photoshoot_styles_keyboard(),
+                    parse_mode="Markdown"
+                )
+            else:  # ai_styles
+                data = await state.get_data()
+                faces = data.get("ai_styles_faces", [])
+                if not faces:
+                    await message.answer("❌ Ты не отправил ни одного фото. Отправь хотя бы одно.")
+                    return
+                await message.answer(
+                    f"✅ Завершён сбор фото (получено {len(faces)}). Переходим к выбору стиля.",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                await state.set_state(UserStates.selecting_ai_styles_style)
+                await message.answer(
+                    "🎨 **Выбери стиль**",
+                    reply_markup=get_ai_styles_keyboard(),
+                    parse_mode="Markdown"
+                )
+        else:
+            # Любой другой текст на этапе сбора фото игнорируем (можно уточнить)
+            await message.answer("Отправляй фото или нажми «✅ Готово».")
+        return
+
+    # ---- Этап ввода промпта (AI Photoshoot) ----
     if current_state == UserStates.waiting_for_photoshoot_prompt:
         if user_text == "✅ Готово":
             await process_photoshoot_generation(message, state, custom_prompt="")
@@ -311,8 +352,8 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
             await process_photoshoot_generation(message, state, custom_prompt=user_text)
         return
 
-    # AI Styles – ввод деталей
-    elif current_state == UserStates.waiting_for_ai_styles_prompt:
+    # ---- Этап ввода промпта (AI Styles) ----
+    if current_state == UserStates.waiting_for_ai_styles_prompt:
         if user_text == "✅ Готово":
             await process_ai_styles_generation(message, state, custom_prompt="")
         else:
@@ -320,21 +361,14 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
             await process_ai_styles_generation(message, state, custom_prompt=user_text)
         return
 
-    # AIMage – ввод промпта
-    elif current_state == UserStates.waiting_for_ai_image_prompt:
+    # ---- Этап ввода промпта (AIMage) ----
+    if current_state == UserStates.waiting_for_ai_image_prompt:
         if user_text == "✅ Готово":
             await process_ai_image_generation(message, state, custom_prompt="")
         else:
             await state.update_data(ai_image_prompt=user_text)
             await process_ai_image_generation(message, state, custom_prompt=user_text)
         return
-
-    # В остальных состояниях игнорируем или предлагаем меню
-    else:
-        # Если случайно нажали "✅ Готово" не в том состоянии – просто игнорируем
-        if user_text == "✅ Готово":
-            return
-        await message.answer("Используй кнопки меню.", reply_markup=get_main_menu())
 
 # ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
