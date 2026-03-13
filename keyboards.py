@@ -62,3 +62,21 @@ def get_reply_keyboard():
         resize_keyboard=True
     )
     return keyboard
+    
+def get_photoshoot_poses_keyboard():
+    """Клавиатура выбора базовой позы"""
+    from prompts import POSES
+    builder = InlineKeyboardBuilder()
+    for pose_key, pose_data in POSES.items():
+        builder.button(text=pose_data['name'], callback_data=f"photoshoot_pose_{pose_key}")
+    builder.adjust(2)  # по 2 кнопки в ряд
+    return builder.as_markup()
+
+def get_photoshoot_gaze_keyboard():
+    """Клавиатура выбора направления взгляда"""
+    from prompts import GAZE
+    builder = InlineKeyboardBuilder()
+    for gaze_key, gaze_data in GAZE.items():
+        builder.button(text=gaze_data['name'], callback_data=f"photoshoot_gaze_{gaze_key}")
+    builder.adjust(3)  # все три в ряд
+    return builder.as_markup()
