@@ -61,26 +61,34 @@ usage = UsageTracker()
 
 # Отправка фото с caption
 async def send_photo(message: types.Message, photo: BufferedInputFile, caption: str, reply_markup=None):
-    """Отправка фото с поддержкой длинных caption и конвертацией в JPEG при необходимости"""
+    """
+    Отправка фото с конвертацией в RGB JPEG для совместимости с Telegram.
+    """
     try:
         # Открываем изображение и проверяем режим
         img = Image.open(io.BytesIO(photo.data))
+        
+        # Конвертируем в RGB если есть альфа-канал или палитра
         if img.mode in ('RGBA', 'LA', 'P'):
             # Создаём белый фон
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[3])
+                background.paste(img, mask=img.split()[3])  # используем альфа-канал как маску
             else:
                 background.paste(img)
             img = background
-        # Сохраняем в JPEG
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Сохраняем в JPEG с высоким качеством
         output = io.BytesIO()
-        img.save(output, format='JPEG', quality=95)
+        img.save(output, format='JPEG', quality=95, optimize=True)
         photo = BufferedInputFile(output.getvalue(), filename="image.jpg")
+        logger.info(f"✅ Изображение сконвертировано в RGB JPEG, размер: {len(output.getvalue())} байт")
     except Exception as e:
-        logger.error(f"Ошибка обработки изображения перед отправкой: {e}")
-        # Если не удалось обработать, пробуем отправить как есть (вдруг проскочит)
-        pass
+        logger.error(f"❌ Ошибка обработки изображения перед отправкой: {e}")
+        # Если не удалось обработать, пробуем отправить как есть
+        # (может быть, это уже корректный JPEG)
 
     try:
         await message.answer_photo(
@@ -89,10 +97,12 @@ async def send_photo(message: types.Message, photo: BufferedInputFile, caption: 
             reply_markup=reply_markup
         )
     except Exception as e:
-        logger.error(f"Error sending photo: {e}")
+        logger.error(f"❌ Error sending photo: {e}")
         # Сохраняем проблемный файл для анализа
-        with open(f"error_{message.from_user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin", "wb") as f:
+        filename = f"error_{message.from_user.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"
+        with open(filename, "wb") as f:
             f.write(photo.data)
+        logger.info(f"💾 Проблемный файл сохранён как {filename}")
         raise  # пробрасываем, чтобы выше не считали генерацию успешной
 
 # ================== ОБРАБОТЧИКИ КОМАНД ==================
