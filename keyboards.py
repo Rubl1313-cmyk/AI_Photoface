@@ -25,7 +25,7 @@ def get_ai_styles_keyboard():
     builder = InlineKeyboardBuilder()
     for style_key, style_data in AI_STYLES.items():
         builder.button(text=style_data['name'], callback_data=f"ai_style_{style_key}")
-    builder.adjust(4, 4, 4, 4, 4, 4, 4, 2)
+    builder.adjust(3)  # по 3 кнопки в ряд для лучшей читаемости
     return builder.as_markup()
 
 def get_photoshoot_formats_keyboard():
