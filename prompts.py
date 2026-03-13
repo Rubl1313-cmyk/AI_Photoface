@@ -188,39 +188,58 @@ AI_STYLES = {
 }
 
 # Позы для фотосессии
+# Базовые позы (без указания взгляда)
 POSES = {
     "standing": {
         "name": "🧍 Стоя",
-        "prompt_addition": "standing pose, confident posture, full body or three-quarters shot",
-        "description": "Вертикальная поза, уверенная стойка"
+        "prompt_addition": "standing pose, full body",
+        "description": "В полный рост"
     },
     "sitting": {
         "name": "🪑 Сидя",
-        "prompt_addition": "sitting pose, relaxed posture, natural sitting position",
-        "description": "Естественная сидячая поза"
+        "prompt_addition": "sitting pose, relaxed",
+        "description": "Сидячая поза"
     },
     "walking": {
-        "name": "🚶 В движении",
+        "name": "🏃 В движении",
         "prompt_addition": "walking pose, motion, dynamic movement, natural stride",
-        "description": "В движении, динамичная поза"
+        "description": "Динамичная поза в движении"
     },
     "model": {
         "name": "💃 Поза модели",
         "prompt_addition": "professional model pose, elegant posture, fashion pose",
         "description": "Профессиональная модельная поза"
     },
-    "selfie": {
-        "name": "🤳 Селфи",
-        "prompt_addition": "selfie style, casual pose, phone in hand or natural selfie angle",
-        "description": "Стиль селфи, естественный ракурс"
+    "half_body": {
+        "name": "👔 Поясной портрет",
+        "prompt_addition": "half body portrait, waist up",
+        "description": "По пояс"
     },
-    "custom": {
-        "name": "🎯 Кастомная",
-        "prompt_addition": "",
-        "description": "Опишите позу самостоятельно"
+    "closeup": {
+        "name": "🔍 Крупный план",
+        "prompt_addition": "close-up portrait, face only",
+        "description": "Только лицо, крупно"
     }
 }
 
+# Направление взгляда
+GAZE = {
+    "to_camera": {
+        "name": "📷 В камеру",
+        "prompt_addition": "looking directly at camera, making eye contact",
+        "description": "Смотрит прямо в объектив"
+    },
+    "away": {
+        "name": "👀 В сторону",
+        "prompt_addition": "looking away from camera, candid style, gaze averted",
+        "description": "Взгляд отведён в сторону"
+    },
+    "profile": {
+        "name": "↪️ Профиль",
+        "prompt_addition": "profile shot, looking to the side, silhouette view",
+        "description": "Чистый профиль"
+    }
+}
 # Форматы для фотосессии
 PHOTOSHOOT_FORMATS = {
     "vertical_4_3": {
