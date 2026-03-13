@@ -159,7 +159,6 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_id = message.from_user.id
 
-    # AI Photoshoot - сбор фото
     if current_state == UserStates.waiting_for_photoshoot_face:
         data = await state.get_data()
         faces = data.get("photoshoot_faces", [])
@@ -188,7 +187,6 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 reply_markup=get_ready_reply_keyboard()
             )
 
-    # AI Styles - сбор фото
     elif current_state == UserStates.waiting_for_ai_styles_face:
         data = await state.get_data()
         faces = data.get("ai_styles_faces", [])
@@ -289,7 +287,6 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
 
 # ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ ==================
 # ВНИМАНИЕ: НЕТ отдельного хендлера @dp.message(F.text == "✅ Готово")!
-# Вся обработка текста (включая кнопку) происходит здесь.
 
 @dp.message()
 async def handle_text_messages(message: types.Message, state: FSMContext):
@@ -405,12 +402,12 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
         logger.info(f"📸 Используется {len(face_photos)} референсных фото")
 
+        # Убрали guidance, так как он не поддерживается моделью FLUX.2
         image_bytes = await generate_photoshoot(
             prompt=final_prompt,
             reference_images=face_photos,
             width=format_info["width"],
-            height=format_info["height"],
-            guidance=7.5  # guidance передаётся, но в cloudflare.py мы его не добавляем в запрос для FLUX.2
+            height=format_info["height"]
         )
 
         if image_bytes:
@@ -458,12 +455,12 @@ async def process_ai_styles_generation(message: types.Message, state: FSMContext
         logger.info(f"🎨 AI Styles: {style_key} - {final_prompt[:100]}...")
         logger.info(f"🎨 Используется {len(face_photos)} референсных фото")
 
+        # Убрали guidance
         image_bytes = await generate_style(
             prompt=final_prompt,
             reference_images=face_photos,
             width=1024,
-            height=576,
-            guidance=7.5
+            height=576
         )
 
         if image_bytes:
@@ -504,6 +501,7 @@ async def process_ai_image_generation(message: types.Message, state: FSMContext,
 
         logger.info(f"🎨 AIMage: {prompt[:50]}...")
 
+        # guidance оставляем, так как FLUX.1-schnell его поддерживает
         image_bytes = await generate_ai_image(
             prompt=prompt,
             width=1024,
