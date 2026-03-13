@@ -297,10 +297,14 @@ async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContex
 
 # ================== ОБРАБОТКА ТЕКСТОВЫХ СООБЩЕНИЙ (ПРОМПТЫ) ==================
 
+# ================== ЕДИНЫЙ ОБРАБОТЧИК ТЕКСТА ==================
 @dp.message()
 async def handle_text_messages(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     user_text = message.text.strip()
+    
+    # Логируем для отладки
+    logger.info(f"Текстовое сообщение в состоянии {current_state}: {user_text}")
 
     # ---- Этап сбора фото (кнопка "✅ Готово") ----
     if current_state in (UserStates.waiting_for_photoshoot_face, UserStates.waiting_for_ai_styles_face):
@@ -339,7 +343,7 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
                     parse_mode="Markdown"
                 )
         else:
-            # Любой другой текст на этапе сбора фото игнорируем (можно уточнить)
+            # Любой другой текст на этапе сбора фото
             await message.answer("Отправляй фото или нажми «✅ Готово».")
         return
 
@@ -369,6 +373,7 @@ async def handle_text_messages(message: types.Message, state: FSMContext):
             await state.update_data(ai_image_prompt=user_text)
             await process_ai_image_generation(message, state, custom_prompt=user_text)
         return
+
 
 # ================== ФУНКЦИИ ГЕНЕРАЦИИ ==================
 
