@@ -52,7 +52,7 @@ async def generate_flux_klein(
     reference_images: Optional[List[bytes]] = None,
     width: int = 1024,
     height: int = 1024,
-    guidance: float = 7.5
+    
 ) -> Optional[bytes]:
     """
     Генерация с FLUX.2-klein (поддержка до 4 референсов).
@@ -79,7 +79,7 @@ async def generate_flux_klein(
     data.add_field('prompt', prompt)
     data.add_field('width', str(width))
     data.add_field('height', str(height))
-    data.add_field('guidance', str(guidance))
+    
 
     # Добавляем все подготовленные референсы (до 4)
     for i, img_bytes in enumerate(prepared_images):
@@ -120,7 +120,7 @@ async def generate_photoshoot(
     reference_images: List[bytes],
     width: int = 768,
     height: int = 1024,
-    guidance: float = 7.5
+    
 ) -> Optional[bytes]:
     """
     Режим AI Photoshoot (поддержка до 4 референсов).
@@ -133,7 +133,7 @@ async def generate_style(
     reference_images: List[bytes],
     width: int = 1024,
     height: int = 576,
-    guidance: float = 7.5
+    
 ) -> Optional[bytes]:
     """
     Режим AI Styles (поддержка до 4 референсов).
