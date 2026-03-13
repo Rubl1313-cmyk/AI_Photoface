@@ -7,6 +7,8 @@ class UserStates(StatesGroup):
     waiting_for_photoshoot_face = State()
     selecting_photoshoot_style = State()
     selecting_photoshoot_format = State()
+    selecting_photoshoot_pose = State()      # выбор позы
+    selecting_photoshoot_gaze = State()      # выбор взгляда  <-- новое
     waiting_for_photoshoot_prompt = State()
     generating_photoshoot = State()
     
