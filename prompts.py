@@ -61,7 +61,7 @@ AI_STYLES = {
         "description": "Футуристический киберпанк"
     },
     "anime": {
-        "name": "� Аниме стиль",
+        "name": "🎌 Аниме",
         "prompt": "anime art style, Japanese manga aesthetic, vibrant colors, clean lines, modern anime character design, studio ghibli inspired",
         "description": "Современный аниме стиль"
     },
@@ -71,7 +71,7 @@ AI_STYLES = {
         "description": "Максимально реалистичный стиль"
     },
     "cartoon_3d": {
-        "name": "� 3D Мультфильм",
+        "name": "🎬 3D Мультфильм",
         "prompt": "3D cartoon animation style, Pixar style, Disney animation, colorful, friendly, modern 3D rendering, animated movie aesthetic",
         "description": "Стиль современных 3D мультфильмов"
     },
@@ -86,7 +86,7 @@ AI_STYLES = {
         "description": "Магический фэнтези мир"
     },
     "sci_fi": {
-        "name": "🚀 Научная фантастика",
+        "name": "🚀 Sci-Fi",
         "prompt": "science fiction style, space exploration, futuristic technology, alien worlds, sci-fi movie aesthetic, advanced civilization",
         "description": "Космическая научная фантастика"
     },
@@ -96,7 +96,7 @@ AI_STYLES = {
         "description": "Акварельная живопись"
     },
     "oil_painting": {
-        "name": "🖼️ Масляная живопись",
+        "name": "🖼️ Масло",
         "prompt": "oil painting style, classical art, rich textures, impasto technique, museum quality, traditional oil painting masterpiece",
         "description": "Классическая масляная живопись"
     },
@@ -111,12 +111,12 @@ AI_STYLES = {
         "description": "Современный минимализм"
     },
     "street_art": {
-        "name": "� Стрит-арт",
+        "name": "🎨 Стрит-арт",
         "prompt": "street art style, graffiti aesthetic, urban art, spray paint, modern street art, bold colors, contemporary urban culture",
         "description": "Городской стрит-арт стиль"
     },
     "glitch": {
-        "name": "📺 Глитч-арт",
+        "name": "📺 Глитч",
         "prompt": "glitch art style, digital corruption, RGB color splits, pixelated effects, retro computer graphics, digital artifacts",
         "description": "Цифровой глитч стиль"
     },
@@ -136,7 +136,7 @@ AI_STYLES = {
         "description": "Мрачный готический стиль"
     },
     "pop_art": {
-        "name": "🎨 Поп-арт",
+        "name": "🍅 Поп-арт",
         "prompt": "pop art style, Andy Warhol aesthetic, bold colors, comic book influence, modern pop art, vibrant, graphic design",
         "description": "Современный поп-арт"
     },
@@ -156,7 +156,7 @@ AI_STYLES = {
         "description": "Японский традиционный стиль"
     },
     "manga": {
-        "name": "� Манга",
+        "name": "📖 Манга",
         "prompt": "manga art style, Japanese comic aesthetic, black and white manga, dynamic action poses, modern manga illustration, anime influence",
         "description": "Современный манга стиль"
     },
@@ -171,7 +171,7 @@ AI_STYLES = {
         "description": "Ретро пиксель-арт"
     },
     "low_poly": {
-        "name": "� Low Poly",
+        "name": "🔺 Low Poly",
         "prompt": "low poly art style, geometric shapes, faceted design, modern 3D aesthetic, minimalist geometry, contemporary digital art",
         "description": "Современный low poly стиль"
     },
