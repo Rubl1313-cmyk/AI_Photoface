@@ -46,18 +46,15 @@ async def generate_flux_klein(
     Генерация с FLUX.2-klein (с референсом).
     Возвращает бинарное изображение или None при ошибке.
     """
-    # Подготавливаем изображение, если есть
     image_data = None
     if reference_image:
         image_data = prepare_reference_image(reference_image, target_size=512)
 
-    # Создаём multipart-данные
     data = aiohttp.FormData()
     data.add_field('prompt', prompt)
     data.add_field('width', str(width))
     data.add_field('height', str(height))
     data.add_field('guidance', str(guidance))
-
     if image_data:
         data.add_field('input_image_0',
                        image_data,
@@ -67,7 +64,14 @@ async def generate_flux_klein(
     async with aiohttp.ClientSession() as session:
         async with session.post(CF_WORKER_URL, data=data) as resp:
             if resp.status == 200:
-                return await resp.read()
+                content_type = resp.headers.get('content-type', '')
+                if 'image' in content_type:
+                    return await resp.read()
+                else:
+                    # Сервер вернул не изображение (например, JSON ошибки)
+                    error_text = await resp.text()
+                    logger.error(f"❌ Worker вернул не изображение (статус 200, content-type: {content_type}): {error_text[:200]}")
+                    return None
             else:
                 error_text = await resp.text()
                 logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
