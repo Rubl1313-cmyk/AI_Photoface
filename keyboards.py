@@ -2,14 +2,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def get_main_menu():
-    """Главное меню бота"""
+    """Главное меню бота (без статистики и поддержки)"""
     builder = InlineKeyboardBuilder()
     builder.button(text="📸 AI Photoshoot", callback_data="ai_photoshoot")
     builder.button(text="🎨 AI Styles", callback_data="ai_styles")
     builder.button(text="🎯 AIMage", callback_data="ai_image")
-    builder.button(text="📊 Статистика", callback_data="stats")
-    builder.button(text="💬 Поддержка", callback_data="support")
-    builder.adjust(3, 2)
+    builder.adjust(3)  # три кнопки в ряд
     return builder.as_markup()
 
 def get_photoshoot_styles_keyboard():
@@ -57,12 +55,11 @@ def get_ready_reply_keyboard():
     return keyboard
 
 def get_reply_keyboard():
-    """Reply клавиатура с быстрым доступом (альтернатива)"""
+    """Reply клавиатура с быстрым доступом (альтернатива) - тоже без статистики и поддержки"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📸 AI Photoshoot"), KeyboardButton(text="🎨 AI Styles")],
-            [KeyboardButton(text="🎯 AIMage"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="💬 Поддержка"), KeyboardButton(text="🔙 Главное меню")]
+            [KeyboardButton(text="🎯 AIMage")]
         ],
         resize_keyboard=True
     )
