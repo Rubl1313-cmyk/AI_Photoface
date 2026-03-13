@@ -29,6 +29,8 @@ from keyboards import (
     get_photoshoot_styles_keyboard,
     get_ai_styles_keyboard,
     get_photoshoot_formats_keyboard,
+    get_photoshoot_poses_keyboard,      # <-- новый импорт
+    get_photoshoot_gaze_keyboard,       # <-- новый импорт
     get_ready_reply_keyboard,
 )
 from prompts import (
@@ -36,7 +38,8 @@ from prompts import (
     AI_STYLES,
     PHOTOSHOOT_FORMATS,
     build_photoshoot_prompt,
-    build_ai_styles_prompt
+    build_ai_styles_prompt,
+    POSES, GAZE        # импортируем словари для проверок (опционально)
 )
 
 # Константы
@@ -231,7 +234,7 @@ async def handle_photo_upload(message: types.Message, state: FSMContext):
                 reply_markup=get_ready_reply_keyboard()
             )
 
-# ================== ВЫБОР СТИЛЯ И ФОРМАТА ==================
+# ================== ВЫБОР СТИЛЯ ==================
 
 @dp.callback_query(F.data.startswith("photoshoot_style_"))
 async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMContext):
@@ -254,6 +257,8 @@ async def handle_photoshoot_style(callback: types.CallbackQuery, state: FSMConte
         parse_mode="Markdown"
     )
 
+# ================== ВЫБОР ФОРМАТА ==================
+
 @dp.callback_query(F.data.startswith("photoshoot_format_"))
 async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -264,12 +269,64 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
         return
     format_info = PHOTOSHOOT_FORMATS[format_key]
     await state.update_data(photoshoot_format=format_key)
-    await state.set_state(UserStates.waiting_for_photoshoot_prompt)
-
+    
+    # Переход к выбору позы (новый шаг)
+    await state.set_state(UserStates.selecting_photoshoot_pose)
     await callback.message.edit_text(
         f"📐 **{format_info['name']}**\n\n"
         f"📝 {format_info['description']}\n\n"
-        f"✍️ **Добавь детали для генерации:**\n"
+        f"🧍 **Теперь выбери базовую позу:**",
+        reply_markup=get_photoshoot_poses_keyboard(),
+        parse_mode="Markdown"
+    )
+
+# ================== ВЫБОР ПОЗЫ ==================
+
+@dp.callback_query(F.data.startswith("photoshoot_pose_"))
+async def handle_photoshoot_pose(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    pose_key = callback.data.replace("photoshoot_pose_", "")
+    
+    from prompts import POSES
+    if pose_key not in POSES:
+        await callback.answer("❌ Поза не найдена", show_alert=True)
+        return
+    
+    # Сохраняем позу
+    await state.update_data(photoshoot_pose=pose_key)
+    
+    # Переходим к выбору взгляда
+    await state.set_state(UserStates.selecting_photoshoot_gaze)
+    await callback.message.edit_text(
+        f"🧍 **{POSES[pose_key]['name']}**\n\n"
+        f"📝 {POSES[pose_key]['description']}\n\n"
+        f"👀 **Теперь выбери направление взгляда:**",
+        reply_markup=get_photoshoot_gaze_keyboard(),
+        parse_mode="Markdown"
+    )
+
+# ================== ВЫБОР ВЗГЛЯДА ==================
+
+@dp.callback_query(F.data.startswith("photoshoot_gaze_"))
+async def handle_photoshoot_gaze(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    gaze_key = callback.data.replace("photoshoot_gaze_", "")
+    
+    from prompts import GAZE
+    if gaze_key not in GAZE:
+        await callback.answer("❌ Направление не найдено", show_alert=True)
+        return
+    
+    # Сохраняем взгляд
+    await state.update_data(photoshoot_gaze=gaze_key)
+    
+    # Переходим к вводу деталей
+    await state.set_state(UserStates.waiting_for_photoshoot_prompt)
+    
+    await callback.message.edit_text(
+        f"👀 **{GAZE[gaze_key]['name']}**\n\n"
+        f"📝 {GAZE[gaze_key]['description']}\n\n"
+        f"✍️ **Теперь добавь детали для генерации:**\n"
         f"• Где находится?\n"
         f"• Во что одет?\n"
         f"• Какое настроение?\n\n"
@@ -280,6 +337,8 @@ async def handle_photoshoot_format(callback: types.CallbackQuery, state: FSMCont
         "📝 Введи детали или нажми «✅ Готово», чтобы использовать базовый стиль.",
         reply_markup=get_ready_reply_keyboard()
     )
+
+# ================== ВЫБОР СТИЛЯ ДЛЯ AI STYLES ==================
 
 @dp.callback_query(F.data.startswith("ai_style_"))
 async def handle_ai_styles_style(callback: types.CallbackQuery, state: FSMContext):
@@ -400,6 +459,8 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
         face_photos = data.get("photoshoot_faces", [])
         style_key = data.get("photoshoot_style", "portrait")
         format_key = data.get("photoshoot_format", "vertical_4_3")
+        pose_key = data.get("photoshoot_pose", "standing")       # извлекаем позу
+        gaze_key = data.get("photoshoot_gaze", "to_camera")      # извлекаем взгляд
         user_prompt = custom_prompt or data.get("photoshoot_prompt", "")
 
         if not face_photos:
@@ -419,10 +480,10 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             return
 
         format_info = PHOTOSHOOT_FORMATS[format_key]
-        final_prompt = build_photoshoot_prompt(style_key, "selfie", user_prompt)
+        final_prompt = build_photoshoot_prompt(style_key, pose_key, gaze_key, user_prompt)
 
         logger.info(f"📸 AI Photoshoot: {style_key} - {final_prompt[:100]}...")
-        logger.info(f"📸 Используется {len(face_photos)} референсных фото")
+        logger.info(f"📸 Используется {len(face_photos)} референсных фото, поза: {pose_key}, взгляд: {gaze_key}")
 
         image_bytes = await generate_photoshoot(
             prompt=final_prompt,
@@ -436,6 +497,8 @@ async def process_photoshoot_generation(message: types.Message, state: FSMContex
             caption = (
                 f"📸 **{style['name']} готов!**\n\n"
                 f"📐 Формат: {format_info['name']}\n"
+                f"🧍 Поза: {POSES[pose_key]['name']}\n"
+                f"👀 Взгляд: {GAZE[gaze_key]['name']}\n"
                 f"📝 Детали: `{user_prompt if user_prompt else 'Базовый стиль'}`\n"
                 f"✨ Создано с AI PhotoStudio 2.0 + FLUX.2-klein"
             )
