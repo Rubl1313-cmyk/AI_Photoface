@@ -35,6 +35,9 @@ from prompts import (
     get_photoshoot_negative_prompt,
     build_ai_styles_prompt
 )
+import io
+from datetime import datetime
+from PIL import Image
 
 # Константы
 DATA_DIR = Path("/app/data")
