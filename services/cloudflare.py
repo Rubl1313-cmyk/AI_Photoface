@@ -44,25 +44,24 @@ def prepare_reference_images(image_bytes_list: List[bytes], target_size: int = 5
             logger.info(f"✅ Референс {i} подготовлен: {target_size}x{target_size}")
         except Exception as e:
             logger.error(f"❌ Image preparation error for reference {i}: {e}")
-            prepared.append(None)  # Не добавляем повреждённое изображение
+            prepared.append(None)
     return prepared
 
 async def generate_flux_klein(
     prompt: str,
     reference_images: Optional[List[bytes]] = None,
     width: int = 1024,
-    height: int = 1024,
-    
+    height: int = 1024
 ) -> Optional[bytes]:
     """
     Генерация с FLUX.2-klein (поддержка до 4 референсов).
+    Параметр guidance не поддерживается этой моделью и поэтому не используется.
 
     Args:
         prompt: Текстовое описание
         reference_images: Список байтов референсных изображений (максимум 4)
         width: Ширина выходного изображения
         height: Высота выходного изображения
-        guidance: Guidance scale (по умолч. 7.5)
 
     Returns:
         Бинарные данные изображения (PNG) или None при ошибке
@@ -79,11 +78,11 @@ async def generate_flux_klein(
     data.add_field('prompt', prompt)
     data.add_field('width', str(width))
     data.add_field('height', str(height))
-    
+    # guidance не добавляем – модель его не поддерживает
 
     # Добавляем все подготовленные референсы (до 4)
     for i, img_bytes in enumerate(prepared_images):
-        if img_bytes is not None:  # Добавляем только успешно подготовленные
+        if img_bytes is not None:
             data.add_field(
                 f'input_image_{i}',
                 img_bytes,
@@ -104,7 +103,6 @@ async def generate_flux_klein(
                     logger.info(f"✅ Получено изображение: {len(image_data)} байт, content-type: {content_type}")
                     return image_data
                 else:
-                    # Сервер вернул не изображение (JSON ошибки)
                     error_text = await resp.text()
                     logger.error(f"❌ Worker вернул не изображение (статус 200, content-type: {content_type}): {error_text[:200]}")
                     return None
@@ -113,35 +111,32 @@ async def generate_flux_klein(
                 logger.error(f"❌ FLUX.2 error {resp.status}: {error_text}")
                 return None
 
-# ===== Удобные обёртки, принимающие список референсов (до 4) =====
+# ===== Удобные обёртки для FLUX.2 =====
+# В этих функциях убран параметр guidance
 
 async def generate_photoshoot(
     prompt: str,
     reference_images: List[bytes],
     width: int = 768,
-    height: int = 1024,
-    
+    height: int = 1024
 ) -> Optional[bytes]:
     """
     Режим AI Photoshoot (поддержка до 4 референсов).
-    Принимает список байтов референсных изображений.
     """
-    return await generate_flux_klein(prompt, reference_images, width, height, guidance)
+    return await generate_flux_klein(prompt, reference_images, width, height)
 
 async def generate_style(
     prompt: str,
     reference_images: List[bytes],
     width: int = 1024,
-    height: int = 576,
-    
+    height: int = 576
 ) -> Optional[bytes]:
     """
     Режим AI Styles (поддержка до 4 референсов).
-    Принимает список байтов референсных изображений.
     """
-    return await generate_flux_klein(prompt, reference_images, width, height, guidance)
+    return await generate_flux_klein(prompt, reference_images, width, height)
 
-# ===== FLUX.1-schnell (без референса) =====
+# ===== FLUX.1-schnell (без референса, поддерживает guidance) =====
 
 async def generate_flux_schnell(
     prompt: str,
